@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { isStepCount, streamText, tool, type LanguageModel, type ModelMessage, type ToolSet } from 'ai';
+import { registrarError } from '../infra/registro.ts';
 import { catalogo, type Herramientas } from '../tools/oc.ts';
 
 const instrucciones = readFileSync(new URL('../../agent/prompt.md', import.meta.url), 'utf8');
@@ -56,5 +57,6 @@ export function ejecutarAgente({ herramientas, modelo, secretoAprobacion, messag
     toolApproval: aprobaciones,
     experimental_toolApprovalSecret: secreto,
     stopWhen: isStepCount(15),
+    onError: ({ error }) => registrarError('agente', error),
   });
 }
