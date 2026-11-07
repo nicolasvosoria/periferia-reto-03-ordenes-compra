@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SapEnMemoria } from '../src/domain/sap.ts';
+import { SapEnMemoria } from '../src/infra/sap-memoria.ts';
 
 const input = {
   solicitudId: 'sol-1', proveedor: 'P001', centroCosto: 'CC1',

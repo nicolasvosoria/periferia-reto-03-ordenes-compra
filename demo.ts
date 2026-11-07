@@ -3,7 +3,7 @@
  * a las herramientas, sin consumir ningún modelo de lenguaje.
  *   npm run demo
  */
-import { SapEnMemoria } from './src/domain/sap.ts';
+import { SapEnMemoria } from './src/infra/sap-memoria.ts';
 import { crearHerramientas } from './src/tools/oc.ts';
 
 const h = crearHerramientas(new SapEnMemoria(() => new Date('2026-01-01T00:00:00Z')));

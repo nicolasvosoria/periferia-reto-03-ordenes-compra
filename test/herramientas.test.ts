@@ -1,5 +1,9 @@
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { SapEnMemoria } from '../src/domain/sap.ts';
+import { leerSolicitud } from '../src/infra/fixtures.ts';
+import { SapEnMemoria } from '../src/infra/sap-memoria.ts';
 import { crearHerramientas } from '../src/tools/oc.ts';
 
 beforeAll(() => {
@@ -38,5 +42,14 @@ describe('herramientas de OC', () => {
   });
   it('marca crear_orden_compra como acción con aprobación humana', () => {
     expect(h().crear_orden_compra.requiereAprobacion).toBe(true);
+  });
+});
+
+describe('lectura de fixtures', () => {
+  it('un JSON roto nombra el archivo que falló', async () => {
+    const base = await mkdtemp(path.join(tmpdir(), 'fixtures-'));
+    await mkdir(path.join(base, 'solicitudes', 'sol-rota'), { recursive: true });
+    await writeFile(path.join(base, 'solicitudes', 'sol-rota', 'solicitud.json'), '{ roto');
+    await expect(leerSolicitud('sol-rota', base)).rejects.toThrow('JSON inválido en solicitud.json');
   });
 });

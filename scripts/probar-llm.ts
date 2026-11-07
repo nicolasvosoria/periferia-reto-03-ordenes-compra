@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { generateText, isStepCount } from 'ai';
 import { aToolsAiSdk } from '../src/agent/agente.ts';
 import { crearModelo, leerConfigModelo } from '../src/agent/model.ts';
-import { SapEnMemoria } from '../src/domain/sap.ts';
+import { SapEnMemoria } from '../src/infra/sap-memoria.ts';
 import { crearHerramientas } from '../src/tools/oc.ts';
 
 const base = leerConfigModelo();

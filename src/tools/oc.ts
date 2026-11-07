@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { evaluar } from '../domain/controles.ts';
-import { leerMaestros, leerSolicitud, listarSolicitudes } from '../domain/fixtures.ts';
+import { solicitudIdSchema as solicitudId } from '../domain/expediente.ts';
+import { leerMaestros, leerSolicitud, listarSolicitudes } from '../infra/fixtures.ts';
 import { matrizControles } from '../domain/matriz-controles.ts';
 import type { SapPort } from '../domain/sap.ts';
 
@@ -18,8 +19,6 @@ export interface Herramienta<S extends z.ZodObject = z.ZodObject, O = unknown> {
 }
 
 const herramienta = <S extends z.ZodObject, O>(h: Herramienta<S, O>) => h;
-
-const solicitudId = z.string().regex(/^[\w-]+$/).describe('Id de la carpeta, p. ej. sol-001');
 
 const ordenCompra = z.object({
   solicitudId,

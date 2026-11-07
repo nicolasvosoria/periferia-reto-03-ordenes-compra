@@ -1,5 +1,5 @@
 import type { Control } from './controles.ts';
-import type { Expediente } from './fixtures.ts';
+import type { Expediente } from './expediente.ts';
 
 export interface ContextoSolicitud {
   expediente: Expediente;

@@ -1,6 +1,6 @@
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { SapEnMemoria } from '../domain/sap.ts';
+import { SapEnMemoria } from '../infra/sap-memoria.ts';
 import { crearHerramientas } from '../tools/oc.ts';
 import { crearApp } from './app.ts';
 

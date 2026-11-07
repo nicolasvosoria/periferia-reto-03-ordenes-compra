@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { SapEnMemoria } from '../domain/sap.ts';
+import { SapEnMemoria } from '../infra/sap-memoria.ts';
 import { catalogo, crearHerramientas } from '../tools/oc.ts';
 
 /** Las mismas herramientas del agente, publicadas por MCP (stdio) para cualquier cliente MCP. */
