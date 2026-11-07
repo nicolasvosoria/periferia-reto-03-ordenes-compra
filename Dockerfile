@@ -14,6 +14,7 @@ COPY package.json ./
 COPY agent ./agent
 COPY src ./src
 COPY fixtures ./fixtures
+RUN mkdir -p out && chown node:node out
 EXPOSE 3000
 USER node
 CMD ["npx", "tsx", "src/server/index.ts"]

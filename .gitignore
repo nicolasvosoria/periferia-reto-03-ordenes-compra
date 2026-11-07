@@ -5,3 +5,4 @@ dist/
 .DS_Store
 # Instructivos entregados por Periferia: no se versionan
 /*.pdf
+out/

@@ -1,6 +1,6 @@
 import { MockLanguageModelV4 } from 'ai/test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { appDePrueba, mensajeUsuario, postChat } from './apoyo.ts';
+import { adaptadorDePrueba, appDePrueba, mensajeUsuario, postChat } from './apoyo.ts';
 
 const modeloQueFalla = () =>
   new MockLanguageModelV4({
@@ -49,9 +49,9 @@ describe('manejo de errores', () => {
   it('un error interno responde 500 genérico y queda registrado', async () => {
     const registro = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const aplicacion = appDePrueba({
-      crearModelo: () => {
+      adaptador: adaptadorDePrueba(() => {
         throw new Error('detalle interno: clave sk-filtrada');
-      },
+      }),
     });
     const respuesta = await postChat(aplicacion, { id: 'c1', messages: [mensajeUsuario('hola')] });
     expect(respuesta.status).toBe(500);
@@ -63,7 +63,7 @@ describe('manejo de errores', () => {
 
   it('un fallo del modelo llega al cliente como mensaje genérico y se registra en el servidor', async () => {
     const registro = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const respuesta = await postChat(appDePrueba({ crearModelo: modeloQueFalla }), { id: 'c1', messages: [mensajeUsuario('hola')] });
+    const respuesta = await postChat(appDePrueba({ adaptador: adaptadorDePrueba(modeloQueFalla) }), { id: 'c1', messages: [mensajeUsuario('hola')] });
     const cuerpo = await respuesta.text();
     expect(cuerpo).toContain('Ocurrió un error procesando la solicitud');
     expect(cuerpo).not.toContain('sk-filtrada');
@@ -72,11 +72,35 @@ describe('manejo de errores', () => {
 
   it('el registro no incluye el cuerpo de la request', async () => {
     const registro = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    await postChat(appDePrueba({ crearModelo: modeloQueFalla }), {
+    await postChat(appDePrueba({ adaptador: adaptadorDePrueba(modeloQueFalla) }), {
       id: 'c1',
       messages: [mensajeUsuario('dato confidencial del prompt')],
     });
     const lineas = registro.mock.calls.flat().join('\n');
     expect(lineas).not.toContain('dato confidencial del prompt');
+  });
+});
+
+describe('endpoints de consulta', () => {
+  it('health informa proveedor y modelo sin claves', async () => {
+    const respuesta = await appDePrueba().request('/api/health');
+    expect(await respuesta.json()).toEqual({ ok: true, provider: 'mock', model: 'mock-1' });
+  });
+
+  it('guarda la sesión y la expone en /api/sessions/:id', async () => {
+    const aplicacion = appDePrueba();
+    const respuesta = await postChat(aplicacion, { id: 'sesion-1', messages: [mensajeUsuario('hola')] });
+    await respuesta.text();
+    const sesion = await (await aplicacion.request('/api/sessions/sesion-1')).json();
+    expect(sesion.mensajes.map((m: { role: string }) => m.role)).toEqual(['user', 'assistant']);
+    expect((await aplicacion.request('/api/sessions/no-existe')).status).toBe(404);
+  });
+
+  it('corta la conversación al superar el tope de tokens por sesión', async () => {
+    const aplicacion = appDePrueba({ limites: { maxTokensSesion: 1 } });
+    await (await postChat(aplicacion, { id: 's2', messages: [mensajeUsuario('hola')] })).text();
+    const segunda = await postChat(aplicacion, { id: 's2', messages: [mensajeUsuario('otra')] });
+    expect(segunda.status).toBe(429);
+    expect((await segunda.json()).error).toMatch(/tope de tokens/);
   });
 });

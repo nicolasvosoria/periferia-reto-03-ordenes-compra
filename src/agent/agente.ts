@@ -1,59 +1,45 @@
 import { readFileSync } from 'node:fs';
-import { isStepCount, streamText, tool, type LanguageModel, type ModelMessage, type ToolSet } from 'ai';
+import { isStepCount, streamText, tool, type LanguageModel, type LanguageModelUsage, type ModelMessage, type ToolSet } from 'ai';
+import { z } from 'zod';
 import { registrarError } from '../infra/registro.ts';
-import { catalogo, type Herramientas } from '../tools/oc.ts';
+import { catalogo, type ContextoHerramienta } from '../tools/oc.ts';
 
-const instrucciones = readFileSync(new URL('../../agent/prompt.md', import.meta.url), 'utf8');
+const leer = (ruta: string) => readFileSync(new URL(ruta, import.meta.url), 'utf8');
 
-const PLACEHOLDER_HEREDADO = 'cambia-esto-por-un-valor-aleatorio-largo';
-const LONGITUD_MINIMA_SECRETO = 32;
-const MAX_TOKENS_SALIDA_POR_PASO = 2000;
+const instrucciones = [
+  leer('../../agent/prompt.md'),
+  '# Conocimiento del proceso',
+  leer('../knowledge/ordenes-compra.md'),
+].join('\n\n');
 
-export function exigirSecretoAprobacion(secreto: string | undefined): string {
-  if (!secreto) {
-    throw new Error('Falta TOOL_APPROVAL_SECRET: sin él, cualquier cliente puede falsificar una aprobación humana');
-  }
-  if (secreto === PLACEHOLDER_HEREDADO) {
-    throw new Error('TOOL_APPROVAL_SECRET usa el valor de ejemplo: genera uno con `openssl rand -hex 32`');
-  }
-  if (secreto.length < LONGITUD_MINIMA_SECRETO) {
-    throw new Error(`TOOL_APPROVAL_SECRET debe tener al menos ${LONGITUD_MINIMA_SECRETO} caracteres`);
-  }
-  return secreto;
-}
-
-export function aToolsAiSdk(herramientas: Herramientas): ToolSet {
+export function aToolsAiSdk(ctx: ContextoHerramienta): ToolSet {
   return Object.fromEntries(
-    catalogo(herramientas).map(([nombre, h]) => [
+    catalogo().map(([nombre, h]) => [
       nombre,
-      tool({ description: h.descripcion, inputSchema: h.entrada, execute: (input) => h.ejecutar(input) }),
+      tool({ description: h.description, inputSchema: z.object(h.args), execute: (input) => h.execute(input, ctx) }),
     ]),
   );
 }
 
 export interface PeticionAgente {
-  herramientas: Herramientas;
   modelo: LanguageModel;
-  secretoAprobacion: string | undefined;
   messages: ModelMessage[];
+  ctx: ContextoHerramienta;
+  maxPasos: number;
+  maxTokensSalida: number;
+  alTerminar?: (uso: LanguageModelUsage) => void;
 }
 
-export function ejecutarAgente({ herramientas, modelo, secretoAprobacion, messages }: PeticionAgente) {
-  const secreto = exigirSecretoAprobacion(secretoAprobacion);
-  const aprobaciones = Object.fromEntries(
-    catalogo(herramientas)
-      .filter(([, h]) => h.requiereAprobacion)
-      .map(([nombre]) => [nombre, 'user-approval' as const]),
-  );
+export function ejecutarAgente({ modelo, messages, ctx, maxPasos, maxTokensSalida, alTerminar }: PeticionAgente) {
   return streamText({
     model: modelo,
     instructions: instrucciones,
     messages,
-    tools: aToolsAiSdk(herramientas),
-    toolApproval: aprobaciones,
-    experimental_toolApprovalSecret: secreto,
-    stopWhen: isStepCount(15),
-    maxOutputTokens: MAX_TOKENS_SALIDA_POR_PASO,
+    tools: aToolsAiSdk(ctx),
+    stopWhen: isStepCount(maxPasos),
+    prepareStep: ({ stepNumber }) => (stepNumber >= maxPasos - 1 ? { toolChoice: 'none' } : undefined),
+    maxOutputTokens: maxTokensSalida,
     onError: ({ error }) => registrarError('agente', error),
+    onFinish: ({ totalUsage }) => alTerminar?.(totalUsage),
   });
 }

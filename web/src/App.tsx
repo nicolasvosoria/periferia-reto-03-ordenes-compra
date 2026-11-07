@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
-import { isToolUIPart, lastAssistantMessageIsCompleteWithApprovalResponses } from 'ai';
+import { isToolUIPart } from 'ai';
+import { esperaConfirmacion } from './resultado.ts';
 import { ToolCall } from './ToolCall.tsx';
 
 const Markdown = lazy(() => import('./Markdown.tsx'));
@@ -18,21 +19,23 @@ function mensajeDeError(error: Error): string {
 
 export function App() {
   const [input, setInput] = useState('');
-  const { messages, sendMessage, addToolApprovalResponse, status, error } = useChat({
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithApprovalResponses,
-  });
+  const { messages, sendMessage, status, error } = useChat();
   const ocupado = status === 'submitted' || status === 'streaming';
+  const pidiendoConfirmacion = !ocupado && esperaConfirmacion(messages.at(-1));
 
   return (
     <main className="chat">
       <header>
         <h1>Agente de Órdenes de Compra</h1>
-        <p>Valida solicitudes contra la matriz de controles y crea la OC en SAP (simulado).</p>
+        <p>Lee el paquete de compra, lo valida contra los maestros (RC1–RC10) y crea la OC en SAP (simulado).</p>
       </header>
 
       <section className="mensajes" aria-live="polite">
-        {messages.map((m) => (
-          <article key={m.id} className={`mensaje ${m.role}`}>
+        {messages.map((m, indice) => (
+          <article
+            key={m.id}
+            className={`mensaje ${m.role} ${pidiendoConfirmacion && indice === messages.length - 1 ? 'confirmacion' : ''}`}
+          >
             {m.parts.map((part, i) => {
               if (part.type === 'text') {
                 return m.role === 'assistant' ? (
@@ -46,12 +49,18 @@ export function App() {
                 );
               }
               if (isToolUIPart(part)) {
-                return <ToolCall key={part.toolCallId} part={part} onResponder={addToolApprovalResponse} />;
+                return <ToolCall key={part.toolCallId} part={part} />;
               }
               return null;
             })}
           </article>
         ))}
+        {status === 'submitted' && <p className="pensando">El agente está pensando…</p>}
+        {pidiendoConfirmacion && (
+          <p className="aviso-confirmacion" role="status">
+            ⚠️ El agente espera tu confirmación. Responde «confirmo» para crear la OC o explica qué corregir.
+          </p>
+        )}
         {error && <p className="error" role="alert">{mensajeDeError(error)}</p>}
       </section>
 
@@ -66,7 +75,7 @@ export function App() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ej.: Procesa la solicitud sol-001"
+          placeholder={pidiendoConfirmacion ? 'Escribe «confirmo» o indica qué corregir' : 'Ej.: Procesa la solicitud sol-004'}
           disabled={ocupado}
         />
         <button type="submit" disabled={ocupado}>Enviar</button>

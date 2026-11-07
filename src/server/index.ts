@@ -1,15 +1,13 @@
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { crearModelo, leerConfigModelo } from '../agent/model.ts';
-import { SapEnMemoria } from '../infra/sap-memoria.ts';
-import { crearHerramientas } from '../tools/oc.ts';
+import { crearAdaptadorOpenCode } from '../llm/opencode.ts';
 import { crearApp } from './app.ts';
+import { limitesDesdeEntorno } from './limites.ts';
 
-const configModelo = leerConfigModelo();
 const app = crearApp({
-  herramientas: crearHerramientas(new SapEnMemoria()),
-  crearModelo: (sesionId) => crearModelo(sesionId, configModelo),
-  secretoAprobacion: process.env.TOOL_APPROVAL_SECRET,
+  adaptador: crearAdaptadorOpenCode(),
+  directorio: process.cwd(),
+  limites: limitesDesdeEntorno(),
 });
 app.use('/*', serveStatic({ root: './dist' }));
 

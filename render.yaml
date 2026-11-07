@@ -9,5 +9,3 @@ services:
         sync: false
       - key: MODEL
         value: glm-5.3
-      - key: TOOL_APPROVAL_SECRET
-        generateValue: true

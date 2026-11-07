@@ -7,19 +7,19 @@ import {
   createUIMessageStreamResponse,
   safeValidateUIMessages,
   toUIMessageStream,
-  type LanguageModel,
   type UIMessage,
 } from 'ai';
 import { z } from 'zod';
-import { ejecutarAgente, exigirSecretoAprobacion } from '../agent/agente.ts';
+import { ejecutarAgente } from '../agent/agente.ts';
 import { registrarError } from '../infra/registro.ts';
-import type { Herramientas } from '../tools/oc.ts';
+import type { AdaptadorLLM } from '../llm/adapter.ts';
 import { LIMITES_POR_DEFECTO, crearLimitadorVentana, ipDelCliente, type LimitesChat } from './limites.ts';
+import { crearAlmacenSesiones } from './sesiones.ts';
 
 export interface DependenciasApp {
-  herramientas: Herramientas;
-  crearModelo: (sesionId: string) => LanguageModel;
-  secretoAprobacion: string | undefined;
+  adaptador: AdaptadorLLM;
+  directorio: string;
+  salida?: string;
   limites?: Partial<LimitesChat>;
 }
 
@@ -52,19 +52,23 @@ const politicaSeguridad = secureHeaders({
   xFrameOptions: 'DENY',
 });
 
-export function crearApp({ herramientas, crearModelo, secretoAprobacion, limites }: DependenciasApp) {
-  const secreto = exigirSecretoAprobacion(secretoAprobacion);
+export function crearApp({ adaptador, directorio, salida, limites }: DependenciasApp) {
   const config = { ...LIMITES_POR_DEFECTO, ...limites };
+  const sesiones = crearAlmacenSesiones(config.maxSesiones);
   const app = new Hono();
 
   app.use('*', politicaSeguridad);
   app.onError(responderError);
-  app.get('/api/health', (c) => c.json({ ok: true }));
+  app.get('/api/health', (c) => c.json({ ok: true, provider: adaptador.proveedor, model: adaptador.modelo }));
+  app.get('/api/sessions/:id', (c) => {
+    const sesion = sesiones.consultar(c.req.param('id'));
+    return sesion ? c.json({ id: c.req.param('id'), ...sesion }) : c.json({ error: 'Sesión no encontrada' }, 404);
+  });
   app.post(
     '/api/chat',
     bodyLimit({ maxSize: config.maxBytes, onError: (c) => c.json({ error: CONVERSACION_DEMASIADO_LARGA }, 413) }),
     limitarPorIp(config),
-    responderChat({ herramientas, crearModelo, secreto, config }),
+    responderChat({ adaptador, directorio, salida, config, sesiones }),
   );
 
   return app;
@@ -88,25 +92,48 @@ function limitarPorIp(config: LimitesChat): MiddlewareHandler {
   };
 }
 
-type DependenciasChat = Pick<DependenciasApp, 'herramientas' | 'crearModelo'> & { secreto: string; config: LimitesChat };
+type DependenciasChat = Omit<DependenciasApp, 'limites'> & {
+  config: LimitesChat;
+  sesiones: ReturnType<typeof crearAlmacenSesiones>;
+};
 
-function responderChat({ herramientas, crearModelo, secreto, config }: DependenciasChat): Handler {
+const textoDe = (mensaje: UIMessage | undefined) =>
+  mensaje?.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ') ?? '';
+
+function responderChat({ adaptador, directorio, salida, config, sesiones }: DependenciasChat): Handler {
   const turnosDiarios = crearLimitadorVentana({ maximo: config.requestsDiarias, ventanaMs: DIA_MS, maxClaves: 1 });
   return async (c) => {
     const peticion = await leerPeticionChat(c);
     if ('invalida' in peticion) return c.json({ error: `Solicitud inválida: ${peticion.invalida}` }, 400);
     if (peticion.messages.length > config.maxMensajes) return c.json({ error: CONVERSACION_DEMASIADO_LARGA }, 413);
+    const sesion = sesiones.obtener(peticion.id);
+    if (sesion.tokens >= config.maxTokensSesion) {
+      return c.json({ error: 'Esta conversación alcanzó su tope de tokens. Recarga la página para empezar una nueva.' }, 429);
+    }
     if (!turnosDiarios.consumir('global')) {
       return c.json({ error: 'La demo alcanzó su límite de uso diario. Vuelve a intentarlo mañana.' }, 429);
     }
+    sesion.mensajes = peticion.messages;
+    const ultimoDelUsuario = peticion.messages.findLast((m) => m.role === 'user');
     const resultado = ejecutarAgente({
-      herramientas,
-      modelo: crearModelo(peticion.id),
-      secretoAprobacion: secreto,
+      modelo: adaptador.crearModelo(peticion.id),
       messages: await convertToModelMessages(peticion.messages),
+      ctx: { directory: directorio, salida, sessionId: peticion.id, ultimoMensajeUsuario: textoDe(ultimoDelUsuario) },
+      maxPasos: config.maxPasos,
+      maxTokensSalida: config.maxTokensSalida,
+      alTerminar: (uso) => {
+        sesion.tokens += uso.totalTokens ?? 0;
+      },
     });
     return createUIMessageStreamResponse({
-      stream: toUIMessageStream({ stream: resultado.stream, onError: () => MENSAJE_ERROR_AGENTE }),
+      stream: toUIMessageStream({
+        stream: resultado.stream,
+        originalMessages: peticion.messages,
+        onError: () => MENSAJE_ERROR_AGENTE,
+        onFinish: ({ messages }) => {
+          sesion.mensajes = messages;
+        },
+      }),
     });
   };
 }

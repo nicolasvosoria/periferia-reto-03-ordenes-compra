@@ -3,3 +3,4 @@ dist
 .env
 .git
 *.pdf
+out

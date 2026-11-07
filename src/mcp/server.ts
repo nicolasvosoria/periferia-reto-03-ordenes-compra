@@ -1,21 +1,15 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { SapEnMemoria } from '../infra/sap-memoria.ts';
-import { catalogo, crearHerramientas } from '../tools/oc.ts';
+import { catalogo } from '../tools/oc.ts';
 
-const servidor = new McpServer({ name: 'agente-oc-periferia', version: '0.1.0' });
+const servidor = new McpServer({ name: 'agente-oc-periferia', version: '0.2.0' });
+const ctx = { directory: process.cwd(), sessionId: 'mcp' };
 
-for (const [nombre, h] of catalogo(crearHerramientas(new SapEnMemoria()))) {
+for (const [nombre, h] of catalogo()) {
   servidor.registerTool(
     nombre,
-    {
-      description: h.descripcion,
-      inputSchema: h.entrada.shape,
-      annotations: { destructiveHint: h.requiereAprobacion ?? false },
-    },
-    async (input) => ({
-      content: [{ type: 'text' as const, text: JSON.stringify(await h.ejecutar(input), null, 2) }],
-    }),
+    { description: h.description, inputSchema: h.args, annotations: { destructiveHint: nombre === 'oc_crear' } },
+    async (input) => ({ content: [{ type: 'text' as const, text: await h.execute(input, ctx) }] }),
   );
 }
 

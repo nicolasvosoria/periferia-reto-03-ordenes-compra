@@ -1,9 +1,25 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import type { LanguageModel } from 'ai';
 import { MockLanguageModelV4, convertArrayToReadableStream } from 'ai/test';
-import { SapEnMemoria } from '../src/infra/sap-memoria.ts';
 import { crearApp, type DependenciasApp } from '../src/server/app.ts';
-import { crearHerramientas } from '../src/tools/oc.ts';
+import type { ContextoHerramienta } from '../src/tools/oc.ts';
 
-export const SECRETO_DE_PRUEBA = 'x'.repeat(48);
+export const salidaTemporal = () => mkdtempSync(path.join(tmpdir(), 'oc-out-'));
+
+export const contextoDePrueba = (cambios: Partial<ContextoHerramienta> = {}): ContextoHerramienta => ({
+  directory: process.cwd(),
+  sessionId: 'test',
+  salida: salidaTemporal(),
+  ...cambios,
+});
+
+export const adaptadorDePrueba = (crearModelo: (sesionId: string) => LanguageModel = () => modeloQueResponde()) => ({
+  proveedor: 'mock',
+  modelo: 'mock-1',
+  crearModelo,
+});
 
 export const usoVacio = {
   inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
@@ -25,9 +41,9 @@ export const modeloQueResponde = (texto = 'Hola') =>
 
 export const appDePrueba = (dependencias: Partial<DependenciasApp> = {}) =>
   crearApp({
-    herramientas: crearHerramientas(new SapEnMemoria()),
-    crearModelo: () => modeloQueResponde(),
-    secretoAprobacion: SECRETO_DE_PRUEBA,
+    adaptador: adaptadorDePrueba(),
+    directorio: process.cwd(),
+    salida: salidaTemporal(),
     ...dependencias,
   });
 

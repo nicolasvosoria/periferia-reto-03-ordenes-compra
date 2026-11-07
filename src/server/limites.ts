@@ -7,6 +7,10 @@ export interface LimitesChat {
   requestsPorIpPorMinuto: number;
   requestsDiarias: number;
   maxIpsRastreadas: number;
+  maxPasos: number;
+  maxTokensSalida: number;
+  maxTokensSesion: number;
+  maxSesiones: number;
 }
 
 export const LIMITES_POR_DEFECTO: LimitesChat = {
@@ -15,7 +19,22 @@ export const LIMITES_POR_DEFECTO: LimitesChat = {
   requestsPorIpPorMinuto: 30,
   requestsDiarias: 500,
   maxIpsRastreadas: 10_000,
+  maxPasos: 25,
+  maxTokensSalida: 8000,
+  maxTokensSesion: 300_000,
+  maxSesiones: 1000,
 };
+
+const entero = (valor: string | undefined) => (valor && /^\d+$/.test(valor) ? Number(valor) : undefined);
+
+export function limitesDesdeEntorno(env: NodeJS.ProcessEnv = process.env): Partial<LimitesChat> {
+  const candidatos: Partial<LimitesChat> = {
+    maxPasos: entero(env.MAX_PASOS),
+    maxTokensSesion: entero(env.MAX_TOKENS_SESION),
+    requestsDiarias: entero(env.MAX_TURNOS_DIARIOS),
+  };
+  return Object.fromEntries(Object.entries(candidatos).filter(([, v]) => v !== undefined));
+}
 
 interface Ventana {
   inicio: number;
