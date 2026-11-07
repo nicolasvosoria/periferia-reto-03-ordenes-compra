@@ -19,14 +19,14 @@ export function aToolsAiSdk(herramientas: Herramientas): ToolSet {
  * (o se detiene a pedir aprobación humana) → el resultado vuelve al modelo → repite
  * hasta responder en texto o llegar al tope de pasos.
  */
-export function ejecutarAgente(herramientas: Herramientas, messages: ModelMessage[]) {
+export function ejecutarAgente(herramientas: Herramientas, messages: ModelMessage[], sesionId: string) {
   const aprobaciones = Object.fromEntries(
     catalogo(herramientas)
       .filter(([, h]) => h.requiereAprobacion)
       .map(([nombre]) => [nombre, 'user-approval' as const]),
   );
   return streamText({
-    model: crearModelo(),
+    model: crearModelo(sesionId),
     instructions: instrucciones,
     messages,
     tools: aToolsAiSdk(herramientas),

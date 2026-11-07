@@ -7,15 +7,16 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "concurrently -k -n api,web \"tsx watch src/server/index.ts\" \"vite\"",
+    "dev": "concurrently -k -n api,web \"tsx watch --env-file-if-exists=.env src/server/index.ts\" \"vite\"",
     "build": "vite build",
-    "start": "tsx src/server/index.ts",
+    "start": "tsx --env-file-if-exists=.env src/server/index.ts",
     "demo": "tsx demo.ts",
     "mcp": "tsx src/mcp/server.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run lint && npm test && npm run demo"
+    "check": "npm run typecheck && npm run lint && npm test && npm run demo",
+    "probar-llm": "tsx --env-file-if-exists=.env scripts/probar-llm.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.86",

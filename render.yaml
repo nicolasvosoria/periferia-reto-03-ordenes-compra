@@ -8,6 +8,6 @@ services:
       - key: OPENCODE_API_KEY
         sync: false
       - key: MODEL
-        value: claude-sonnet-5-5
+        value: glm-5.3
       - key: TOOL_APPROVAL_SECRET
         generateValue: true

@@ -16,5 +16,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src", "web/src", "test", "demo.ts", "vite.config.ts", "vitest.config.ts", "eslint.config.js"]
+  "include": ["src", "scripts", "web/src", "test", "demo.ts", "vite.config.ts", "vitest.config.ts", "eslint.config.js"]
 }
