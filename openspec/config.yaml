@@ -1,0 +1,17 @@
+schema: spec-driven
+
+context: |
+  Write all artifacts in Spanish (deliverable for Periferia IT Group, Colombia).
+  Technical test, Reto 3: agent that validates purchase requests and creates purchase orders in a simulated SAP.
+  The PRD (PRD.md) and fixtures/reto-03 are the source of truth; quote the PRD section a requirement comes from.
+  The LLM never decides a control outcome: every control is deterministic code in src/domain/matriz-controles.ts.
+  Any SAP write goes through SapPort, requires human approval, and is idempotent by solicitudId.
+  demo.ts must process every case without calling an LLM.
+
+rules:
+  specs:
+    - One requirement per control in the control matrix, with its id (C01, C02, ...) and severity (bloqueante, requiere_confirmacion, informativo)
+    - Each scenario names the fixture case (sol-00X) that exercises it
+  tasks:
+    - Every requirement maps to at least one vitest test in test/
+    - A change is done only when npm run check passes with zero warnings
