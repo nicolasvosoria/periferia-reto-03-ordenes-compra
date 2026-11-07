@@ -1,0 +1,28 @@
+:root {
+  --bg: #f7f8f7; --fg: #1b1f1d; --muted: #5b625e; --card: #ffffff; --border: #dfe3e0;
+  --accent: #1f7a3a; --warn-bg: #fff6df; --warn: #9a6400; --danger: #b3261e;
+  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+  color: var(--fg); background: var(--bg);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #121513; --fg: #e8ece9; --muted: #9aa39e; --card: #1b1f1d; --border: #2d332f; --warn-bg: #3a2e12; --warn: #f2c35b; }
+}
+body { margin: 0; background: var(--bg); }
+.chat { max-width: 860px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; min-height: 100vh; box-sizing: border-box; }
+header h1 { margin: 0 0 4px; font-size: 1.4rem; }
+header p { margin: 0 0 16px; color: var(--muted); }
+.mensajes { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+.mensaje { padding: 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); }
+.mensaje.user { align-self: flex-end; background: var(--accent); color: #fff; border: none; max-width: 80%; }
+.texto { margin: 0; white-space: pre-wrap; }
+.tool { margin: 8px 0; border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: .9rem; }
+.tool.aprobacion { border: 2px solid var(--warn); background: var(--warn-bg); }
+.estado { color: var(--muted); font-size: .8rem; }
+pre { overflow-x: auto; font-size: .8rem; }
+.acciones { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 8px 14px; cursor: pointer; }
+button.rechazar { background: var(--danger); }
+button:disabled { opacity: .5; cursor: default; }
+form { display: flex; gap: 8px; position: sticky; bottom: 0; padding: 12px 0; background: var(--bg); }
+input { flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--fg); }
+.error { color: var(--danger); }

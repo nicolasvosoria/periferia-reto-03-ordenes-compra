@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: agente-oc-periferia
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: OPENCODE_API_KEY
+        sync: false
+      - key: MODEL
+        value: claude-sonnet-5-5
+      - key: TOOL_APPROVAL_SECRET
+        generateValue: true
