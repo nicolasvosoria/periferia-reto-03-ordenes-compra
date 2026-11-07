@@ -15,6 +15,17 @@ header p { margin: 0 0 16px; color: var(--muted); }
 .mensaje { padding: 12px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); }
 .mensaje.user { align-self: flex-end; background: var(--accent); color: #fff; border: none; max-width: 80%; }
 .texto { margin: 0; white-space: pre-wrap; }
+.markdown { line-height: 1.5; overflow-wrap: anywhere; }
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+.markdown h1, .markdown h2, .markdown h3 { font-size: 1.05rem; margin: 16px 0 6px; }
+.markdown p, .markdown ul, .markdown ol { margin: 6px 0; }
+.markdown ul, .markdown ol { padding-left: 22px; }
+.markdown code { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: .85em; }
+.markdown .tabla { overflow-x: auto; margin: 8px 0; }
+.markdown table { border-collapse: collapse; font-size: .9rem; min-width: 100%; overflow-wrap: normal; }
+.markdown th, .markdown td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
+.markdown th { background: var(--bg); font-weight: 600; }
 .tool { margin: 8px 0; border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: .9rem; }
 .tool.aprobacion { border: 2px solid var(--warn); background: var(--warn-bg); }
 .estado { color: var(--muted); font-size: .8rem; }

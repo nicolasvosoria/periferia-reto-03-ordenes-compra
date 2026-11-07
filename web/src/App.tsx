@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { isToolUIPart, lastAssistantMessageIsCompleteWithApprovalResponses } from 'ai';
 import { ToolCall } from './ToolCall.tsx';
+
+const Markdown = lazy(() => import('./Markdown.tsx'));
 
 export function App() {
   const [input, setInput] = useState('');
@@ -21,7 +23,17 @@ export function App() {
         {messages.map((m) => (
           <article key={m.id} className={`mensaje ${m.role}`}>
             {m.parts.map((part, i) => {
-              if (part.type === 'text') return <p key={i} className="texto">{part.text}</p>;
+              if (part.type === 'text') {
+                return m.role === 'assistant' ? (
+                  <div key={i} className="markdown">
+                    <Suspense fallback={<p className="texto">{part.text}</p>}>
+                      <Markdown texto={part.text} />
+                    </Suspense>
+                  </div>
+                ) : (
+                  <p key={i} className="texto">{part.text}</p>
+                );
+              }
               if (isToolUIPart(part)) {
                 return <ToolCall key={part.toolCallId} part={part} onResponder={addToolApprovalResponse} />;
               }
