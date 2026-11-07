@@ -1,130 +1,180 @@
-# SOLUCIÓN — Agente de Órdenes de Compra
+# SOLUCIÓN — Agente conversacional "Órdenes de Compra SAP" (Reto 03)
 
-> Plantilla. Las secciones marcadas con `TODO(PRD)` se completan cuando llegue el PRD.
+## 1. Problema en una frase
 
-## 1. Arquitectura
+La analista administrativa digita a mano en SAP cada orden de compra y valida de memoria que proveedor, aprobador, tope, subárea e IVA sean correctos. Eso cuesta tiempo, produce errores que se corrigen en cierre contable y deja sin medir cuántas OC se crean después de la factura. Le duele a la analista (tiempo), a contabilidad y auditoría (control) y a la dirección (medición).
+
+## 2. Arquitectura
 
 ```
-Chat (React + useChat) ──HTTP/SSE──▶ Hono /api/chat ──▶ streamText (AI SDK, ciclo de herramientas)
-                                                        │
-                                   ┌────────────────────┴───────────────────┐
-                                   ▼                                        ▼
-                          src/tools/oc.ts (zod)                   Gateway OpenCode (LLM)
-                                   │
-              ┌────────────────────┼─────────────────────┐
-              ▼                    ▼                     ▼
-      Matriz de controles    Fixtures/maestros      SapPort ─▶ SapEnMemoria | (prod) adaptador OData
+┌──────────────────────┐  POST /api/chat (stream)   ┌──────────────────────────────────────────────┐
+│ Front React (web/)   │ ─────────────────────────▶ │ Backend Hono (src/server)                    │
+│ - historial          │ ◀───────────────────────── │ - validación, límites, CSP, sesiones         │
+│ - tool calls (args + │   GET /api/sessions/:id    │ - ciclo del agente (src/agent, AI SDK)       │
+│   resultado resumido)│   GET /api/health          │ - adaptador LLM (src/llm) → OpenCode         │
+│ - aviso de confirmar │                            └───────────────┬──────────────────────────────┘
+└──────────────────────┘                                            │ oc_* (src/tools/oc.ts)
+                                       ┌────────────────────────────┼─────────────────────────────┐
+                                       ▼                            ▼                             ▼
+                          src/domain (puro)              src/infra (IO)                 src/sap
+                          paquete · maestros ·           fixtures (solo lectura) ·      adapter.ts (puerto)
+                          reglas RC1–RC10 · payload      out/ control.csv, log.jsonl,   mock.ts → out/sap/
+                                                         <caso>/trazabilidad, evidencia ordenes.jsonl
 ```
 
-Principio rector: **el LLM orquesta y explica; las decisiones de control y la escritura en SAP son código determinista.**
-
-## 2. Ciclo del agente
-
-1. El usuario pide procesar una solicitud.
-2. El modelo llama `listar_solicitudes`, `leer_solicitud`, `consultar_maestros` y `validar_solicitud`.
-3. `validar_solicitud` ejecuta la matriz de controles y devuelve el veredicto (`apta`, `requiere_confirmacion` o `rechazada`) con la evidencia.
-4. Si corresponde, el modelo propone `crear_orden_compra`. El SDK **detiene el ciclo** en estado `approval-requested` y el chat muestra los botones Aprobar/Rechazar.
-5. La aprobación va firmada por HMAC (`TOOL_APPROVAL_SECRET`), así que un cliente no puede falsificarla. Al aprobar, el ciclo continúa y la tool vuelve a validar antes de escribir (defensa en profundidad), con idempotencia por `solicitudId`.
-6. El ciclo se detiene en texto final o al llegar al tope de 15 pasos.
-
-## 3. Matriz de controles
-
-| Id | Control | Severidad | Fuente |
-|---|---|---|---|
-| C01 | Expediente completo (correo, solicitud, cotización, aprobación) | Bloqueante | Instructivo |
-| C02 | Sin factura previa (compra retroactiva) | Requiere confirmación | Instructivo |
-| … | Proveedor activo, NIT, tope por líder/centro de costo, IVA, condición de pago, coherencia solicitud↔cotización | TODO(PRD) | PRD |
-
-## 4. Decisiones de diseño
-
-| Decisión | Alternativas | Por qué |
-|---|---|---|
-| Vercel AI SDK v7 | Loop propio sobre SDK nativo | Aprobación humana nativa y firmada, streaming hacia useChat, agnóstico de proveedor |
-| Gateway OpenCode (OpenAI-compatible) | API directa de un proveedor | Se cambia de modelo con una variable de entorno, sin cambiar código |
-| Catálogo único de tools | Definiciones separadas por canal | La misma lógica sirve al agente, a MCP y a demo.ts: una sola fuente de verdad |
-| Puerto/adaptador SAP | Llamar SAP desde la tool | Se testea en memoria y el adaptador real se cambia sin tocar las tools |
-| Render (contenedor) | Vercel serverless | El estado del SAP simulado sobrevive entre requests |
-
-## 5. Diseño del adaptador SAP real
-
-Las tools solo conocen `SapPort` (`src/domain/sap.ts`; la versión en memoria vive en `src/infra/sap-memoria.ts`): `crearOrdenCompra` y `consultarOrden`. En producción se agrega un `SapODataAdapter` que implementa esa misma interfaz, y la única línea que cambia es la que inyecta el adaptador en `src/server/index.ts`.
-
-**Canal.** S/4HANA Cloud usa OData v4 `API_PURCHASEORDER_2`. On-premise usa OData v2 `API_PURCHASEORDER_PROCESS_SRV`, o RFC `BAPI_PO_CREATE1` + `BAPI_TRANSACTION_COMMIT` a través de SAP Cloud Connector cuando no hay Gateway expuesto.
-
-**Autenticación.** OAuth2 client credentials con un Communication User restringido al escenario de compras (Communication Arrangement `SAP_COM_0053`). El token se cachea hasta poco antes de expirar y el secreto vive en el gestor de secretos, nunca en el repo.
-
-**Mapeo de dominio a SAP.**
-
-| Dominio (`OrdenCompraInput`) | Campo SAP |
+| Pieza | Dónde vive |
 |---|---|
-| `proveedor` | `Supplier` |
-| `centroCosto` | `_PurchaseOrderItem/_AccountAssignment/CostCenter` (imputación `K`) |
-| `condicionPago` | `PaymentTerms` |
-| `posiciones[].descripcion / cantidad / precioUnitario` | `PurchaseOrderItemText`, `OrderQuantity`, `NetPriceAmount` |
-| `posiciones[].indicadorIva` | `TaxCode` |
-| `solicitudId` | `PurchaseOrderItem…/RequisitionerName` o un campo de extensión `YY1_SolicitudId` |
-| constantes de organización | `CompanyCode`, `PurchasingOrganization`, `PurchasingGroup`, `PurchaseOrderType` (`NB`), vía configuración |
+| **Comportamiento** (system prompt) | `agent/prompt.md` |
+| **Conocimiento** del proceso | `src/knowledge/ordenes-compra.md` (se concatena al prompt) |
+| **Ejecución** | `src/tools/oc.ts` (herramientas) sobre `src/domain` (reglas puras) |
+| Adaptador LLM | `src/llm/adapter.ts` (interfaz) + `src/llm/opencode.ts` (implementación) |
+| Adaptador SAP | `src/sap/adapter.ts` (interfaz obligatoria) + `src/sap/mock.ts` (archivos) |
+| Módulo reutilizable (bonus) | `modulo/` generado desde las mismas piezas (`npm run modulo`; un test impide que diverjan) |
 
-**Idempotencia.** Antes de crear, `consultarOrden` hace un `GET` filtrado por `YY1_SolicitudId`. Si ya existe, devuelve esa OC con `duplicada: true`. Si el `POST` hace timeout, el estado es incierto, así que se repite la consulta antes de reintentar: la clave de idempotencia es la solicitud, no la llamada HTTP.
+Un cambio en las reglas de negocio toca `src/domain/reglas.ts` y `src/knowledge/`, nunca el servidor. Un test de arquitectura impide que `src/domain` importe módulos de Node, lea el entorno o dependa de `infra/`.
 
-**Errores y reintentos.** Hay backoff exponencial con jitter (3 intentos) solo ante 5xx, 429 o timeout. Un 4xx no se reintenta. Los mensajes SAP (`sap-message`, o el `RETURN` de la BAPI con tipo `E`/`A`) se traducen a errores de dominio (`ProveedorBloqueado`, `CentroCostoInvalido`, `PresupuestoExcedido`…) que la tool devuelve al modelo como texto explicable, sin stack traces.
+## 3. Ciclo del agente
 
-**Concurrencia.** Las escrituras OData v2 usan `x-csrf-token` (se obtiene con un `GET` previo) y `ETag`/`If-Match` en las modificaciones. Dos aprobaciones simultáneas de la misma solicitud se serializan con un lock por `solicitudId` en Postgres.
+- **Bucle:** `streamText` del Vercel AI SDK ejecuta prompt → modelo → herramientas → modelo hasta que el modelo responde en texto. Las herramientas son los únicos valores que el agente puede afirmar (CA2): el prompt lo prohíbe y las herramientas recalculan todo desde los fixtures, así que el modelo no tiene nada que inventar.
+- **Tope de iteraciones (CA1):** `MAX_PASOS` (25 por defecto). En el último paso se fuerza `toolChoice: 'none'`, de modo que el modelo responde con lo que tiene y lo que falta en vez de cortarse a mitad de una llamada.
+- **Confirmación humana (CA3):** cuando `oc_validar` devuelve `confirmaciones`, el prompt obliga a mostrar la OC y cerrar el turno con una pregunta. El front detecta ese estado (validación apta con confirmaciones y sin OC creada) y resalta el mensaje con un aviso. La garantía no depende del modelo: `oc_crear` exige `confirmado: true` **y** que el último mensaje del usuario sea una confirmación ("confirmo", "sí", "procede"…, nunca con "no"). El backend inyecta ese mensaje en el contexto de la herramienta, así que el modelo no puede autoconfirmarse.
+- **Trazas (CA4):** cada llamada queda visible en el chat (nombre, argumentos, resultado resumido y completo) y en `out/log.jsonl` (ts, sesión, herramienta, args, ok/error).
+- **Errores (CA5):** las herramientas nunca lanzan (`{ ok: false, error }`). El proveedor LLM tiene timeout (45 s al primer fragmento y 90 s por paso). Un error o timeout del proveedor llega al chat como mensaje claro, se registra en el servidor sin el prompt y la sesión sigue viva.
+- **Sesiones:** en memoria por `id` de conversación (`GET /api/sessions/:id` devuelve el historial), con tope de tokens por sesión (`MAX_TOKENS_SESION`).
 
-**Auditoría.** Por cada intento se registra quién aprobó (la firma HMAC de la aprobación), cuál fue el payload, la respuesta de SAP, el número de OC y la duración. Esa traza se cruza con el veredicto de `validar_solicitud` para poder reconstruir la decisión completa.
+## 4. Elección del modelo
 
-**Pruebas.** El mismo suite de contrato de `SapPort` corre contra `SapEnMemoria` y contra el adaptador real apuntando a un sandbox (SAP API Business Hub), con respuestas grabadas para CI.
+- **Proveedor:** gateway OpenCode (endpoint OpenAI-compatible, suscripción Go). **Modelo:** `glm-5.3`.
+- **Por qué:** en la comparación de 5 modelos del catálogo (glm-5.3, glm-5.3-flash, kimi-k3, qwen3.8-flash, deepseek-v4.1-flash), todos acertaron el veredicto. glm-5.3 tuvo la menor latencia (~3,4 s por llamada) y buena redacción en español. Como las reglas son código determinista, el modelo solo orquesta y explica: un modelo mediano basta. Cambiarlo es cambiar la variable `MODEL`; cambiar de proveedor es escribir otro `AdaptadorLLM` sin tocar el ciclo.
+- **Costo por caso:** un caso completo usa de 4 a 6 pasos. Cada paso reenvía prompt, conocimiento, definiciones de herramientas e historial: unos 4 000 a 8 000 tokens de entrada (la mayoría prefijo estable que el proveedor cachea) y unos cientos de salida. En total son unos 30 000 a 45 000 tokens de entrada por caso. Con la suscripción Go se descuenta del cupo; a precio de lista equivale a centavos de dólar por caso (una llamada corta marcó US$0,0009 en `usage.opencode.list_cost`). `npm run probar-llm -- <modelos…>` repite la medición por modelo.
 
-## 6. Análisis crítico: órdenes retroactivas
+## 5. Matriz de controles
 
-TODO(PRD). Hipótesis a contrastar con los casos: si la factura llega antes que la OC, el control de compromiso presupuestal se invirtió. El agente no lo "normaliza": lo marca como desvío, exige confirmación explícita y lo deja registrado para auditoría.
+`src/domain/reglas.ts` (código puro, probado contra los 6 casos oficiales y variantes):
 
-## 7. Costos del modelo
+| Regla | Implementación | Tipo |
+|---|---|---|
+| RC1 | Busca el proveedor por NIT normalizado (solo dígitos, sin dígito de verificación) desde la solicitud o la cotización. Sin NIT, por nombre normalizado (sin tildes, mayúsculas ni puntuación). Debe estar `activo` | Bloqueo |
+| RC2 | Debe existir la aprobación, contener "Aprobado" (palabra completa) y venir de un `aprobadores[].email` del centro | Bloqueo |
+| RC3 | `valor_total` ≤ `tope` del aprobador encontrado | Bloqueo |
+| RC4 | El centro existe y la subárea está en sus `subareas` | Bloqueo |
+| RC5 | `|cotización − solicitud| / solicitud ≤ 2 %`. Sin cotización legible: confirmación. El detalle lleva ambos valores | Confirmación |
+| RC6 | Sin `indicador_iva`: deriva el `indicador_iva_default` del proveedor y pide confirmación | Confirmación + derivado |
+| RC7 | Sin `condiciones_pago`: deriva la del proveedor y solo informa | Derivado |
+| RC8 | Factura con fecha < `fecha_solicitud`: `retroactiva = true`, confirmación y marca en `out/control.csv` | Confirmación |
+| RC9 | Fecha de aprobación (día) ≥ `fecha_solicitud`, si no: confirmación | Confirmación |
+| RC10 | `|cantidad × valor_unitario − valor_total| ≤ 1` | Bloqueo |
 
-El modelo se elige con la variable `MODEL`. `npm run probar-llm -- <modelo…>` ejecuta el mismo caso (validar `sol-retroactiva`) contra cada modelo del gateway OpenCode Go y reporta latencia, tokens y si acertó.
+Resultado sobre los fixtures (`npm run demo`): sol-001 crea la OC sin intervención, sol-002 se bloquea por RC1, sol-003 por RC2, sol-004 pide confirmación por RC5 (6 %), sol-005 por RC8 (retroactiva) y sol-006 por RC6 (IVA derivado), con condiciones de pago derivadas por RC7.
 
-Medición del 2026-11-07 (endpoint Go, una corrida por modelo):
+**La más difícil: RC1.** Hay que leer el NIT de dos fuentes con formatos distintos (`900555111` frente a `900.555.111-2`, con dígito de verificación) y, si no viene (sol-006), caer al nombre normalizado sin generar falsos positivos. La segunda en dificultad fue RC2: sol-003 trae un "Aprobado" legítimo de un líder real, pero de otro centro de costo, y el texto del cuerpo ("aprobado desde comercial…") tienta a aceptarlo. Por eso la regla compara el remitente contra el maestro y no interpreta el texto.
 
-| Modelo | Acierta veredicto | Latencia | Tokens entrada / salida |
-|---|---|---|---|
-| glm-5.3 (por defecto) | ✔ | 3,4 s | 2 100 / 121 |
-| glm-5.3-flash | ✔ | 4,0 s | 2 071 / 76 |
-| kimi-k3 | ✔ | 4,2 s | 2 183 / 239 |
-| qwen3.8-flash | ✔ | 4,1 s | 2 561 / 176 |
-| deepseek-v4.1-flash | ✔ | 5,4 s | 2 526 / 150 |
+## 6. Diseño del adaptador SAP real
 
-Lectura:
-- **La entrada domina.** Unos 2 000 tokens por llamada son las definiciones de las tools; el razonamiento de salida pesa poco. Un caso completo en el chat (leer → maestros → validar → resumen → aprobación) hace entre 4 y 6 pasos y reenvía el historial en cada uno, así que el costo crece con los pasos más que con el modelo.
-- **Ese prefijo es estable** (prompt y tools), por lo que el caché de prompt del proveedor lo abarata. El gateway lo reporta en `usage.prompt_tokens_details.cached_tokens`.
-- **Costo por llamada.** OpenCode devuelve el costo de lista en `usage.opencode.list_cost`. Una llamada corta a glm-5.3 marcó US$0,0009 y con la suscripción Go se descuenta del cupo (`billing_source: "go"`).
-- **Decisión.** Como el veredicto lo calcula código determinista, un modelo pequeño (glm-5.3-flash) basta para orquestar. glm-5.3 queda por defecto por latencia y calidad de redacción, y cambiar de modelo es solo cambiar la variable de entorno.
+La aplicación ya habla con SAP solo a través de `SapAdapter` (`consultarProveedor`, `crearOrden`, `buscarOrdenPorReferencia`). El adaptador real implementa esa interfaz y solo cambia la línea que lo inyecta.
 
-Pendiente con los casos oficiales: medir el flujo completo de `sol-001`…`sol-006` y reportar el costo promedio por OC.
+**Opción elegida: OData `API_PURCHASEORDER_PROCESS_SRV`** (S/4HANA on-premise; `API_PURCHASEORDER_2` en Cloud) publicado vía SAP Cloud Connector o Integration Suite. Es la API estándar y liberada para crear OC, con contrato documentado y sin desarrollos Z. Además se integra igual desde el agente que desde cualquier otro canal. RFC/BAPI (`BAPI_PO_CREATE1` + `BAPI_TRANSACTION_COMMIT`) queda como alternativa si el Gateway no está expuesto. Como la viabilidad no está confirmada, primero se valida con Basis que el servicio exista y esté activo, y en paralelo se deja listo el Plan B.
 
-## 8. Seguridad
+**Mapeo del payload (7.4) a OData:**
 
-La aplicación queda expuesta en una URL pública sin autenticación (es una demo para la defensa técnica), así que el modelo de amenazas parte de un cliente hostil que puede enviar cualquier request y de documentos de solicitud que pueden traer texto manipulado.
+| Payload | `A_PurchaseOrder` / `A_PurchaseOrderItem` |
+|---|---|
+| `sociedad`, `organizacion_compras` | `CompanyCode`, `PurchasingOrganization` (+ `PurchasingGroup`, `PurchaseOrderType = NB` por configuración) |
+| `proveedor.codigo_sap` | `Supplier` |
+| `moneda`, `condiciones_pago` | `DocumentCurrency`, `PaymentTerms` |
+| `posiciones[].numero/descripcion/cantidad/unidad/precio_unitario` | `PurchaseOrderItem`, `PurchaseOrderItemText`, `OrderQuantity`, `PurchaseOrderQuantityUnit` (UN→EA, H→H, MES→MON), `NetPriceAmount` |
+| `posiciones[].centro_costo` | `to_AccountAssignment/CostCenter` con `AccountAssignmentCategory = K` |
+| `posiciones[].subarea` | Campo de extensión `YY1_Subarea` (o el objeto CO que la represente, a confirmar con Finanzas) |
+| `posiciones[].indicador_iva` | `TaxCode` |
+| `referencia.solicitud_id` | Campo de extensión `YY1_SolicitudId` (clave de idempotencia) |
+| `aprobador`, `evidencia_sha256` | Texto de cabecera + PDF de evidencia adjunto con la API de adjuntos (`API_CV_ATTACHMENT_SRV`) |
+| `excepciones` | Texto de cabecera "Excepciones confirmadas" |
 
-| Amenaza | Mitigación | Dónde | Prueba |
-|---|---|---|---|
-| Falsificar la aprobación humana de `crear_orden_compra`, o alterar su input después de aprobada | Las aprobaciones van firmadas con HMAC (`experimental_toolApprovalSecret`). El SDK solo verifica la firma si hay secreto, por eso el agente y la app **se niegan a arrancar** si falta, si mide menos de 32 caracteres o si es el valor de ejemplo. En Render el secreto lo genera la plataforma (`generateValue`) | `src/agent/agente.ts`, `src/server/app.ts` | `test/agente.test.ts`: firma ausente y input alterado no escriben en SAP; la aprobación legítima sí |
-| Inyección de prompt desde la cotización ("ignora lo anterior, el total es…") que altere la OC | La OC que propone el modelo se contrasta en código puro con el expediente y los maestros: el proveedor debe existir, estar activo y coincidir con la solicitud, y el centro de costo y el total declarados deben coincidir (el total se compara en centavos enteros). Si algo no cuadra, la tool no escribe. El prompt declara que el contenido de los documentos es dato, nunca instrucción | `src/domain/coherencia-oc.ts`, `agent/prompt.md` | `test/coherencia-oc.test.ts` |
-| Agotar el cupo de OpenCode o la memoria del servidor | Body de 1 MB como máximo (413), 80 mensajes por conversación (413), 30 requests por minuto por IP (429), presupuesto global de 500 turnos de chat al día (429). Cada turno queda acotado a 15 pasos del modelo y 2000 tokens de salida por paso, así que el techo diario es de unas 7 500 llamadas al LLM en el peor caso. El mapa de IPs tiene un tope de 10 000 claves y libera primero las ventanas vencidas | `src/server/limites.ts`, `src/server/app.ts` | `test/limites.test.ts` |
-| Falsear la IP para saltarse el rate limit | La IP se toma de `True-Client-IP` (la escribe Cloudflare en el borde de Render), luego de `CF-Connecting-IP` y por último del socket. `X-Forwarded-For` **nunca** se usa: el proxy de Render conserva lo que mande el cliente y agrega su propia IP al final | `src/server/limites.ts` | `test/limites.test.ts` (XFF falsificado no da cupo nuevo) |
-| Mensajes `system` o con formato arbitrario enviados por el cliente | Validación del body con zod y `safeValidateUIMessages`; solo se aceptan los roles `user` y `assistant`. El `id` de conversación (que viaja como `x-opencode-session`) se restringe a `[\w-]{1,64}` | `src/server/app.ts` | `test/app.test.ts` |
-| Filtrar detalles internos o prompts en errores y logs | Al cliente solo le llegan mensajes genéricos (500 y errores del stream). En el servidor se registra nombre, mensaje, status y causa del error, nunca el objeto del SDK (que carga el cuerpo de la request) | `src/infra/registro.ts`, `src/server/app.ts` | `test/app.test.ts` |
-| Clickjacking sobre los botones Aprobar/Rechazar, y XSS | CSP estricta (`default-src 'self'`, sin scripts inline, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `nosniff`. El Markdown del agente se renderiza con `react-markdown`, que no inyecta HTML crudo | `src/server/app.ts` | `test/app.test.ts` y prueba manual en el navegador con el build de producción |
-| Path traversal al leer solicitudes | Un solo esquema `solicitudId` (`[\w-]+`) se valida en la tool y en la lectura de fixtures | `src/domain/expediente.ts`, `src/infra/fixtures.ts` | `test/herramientas.test.ts` |
+**Autenticación y credenciales:** OAuth2 client credentials (o certificado X.509) con un Communication User restringido al escenario de compras (Communication Arrangement `SAP_COM_0053`). Las credenciales viven en el gestor de secretos del backend y las lee solo el adaptador. Nunca llegan al agente, al prompt, al front ni a los logs.
 
-**Arquitectura que sostiene esto.** `src/domain/` es puro (controles, matriz, coherencia de la OC y el puerto `SapPort`). El IO vive en `src/infra/` (fixtures, SAP en memoria, registro) y `test/arquitectura.test.ts` falla si el dominio importa módulos de Node, lee el entorno o depende de `infra/`. La app recibe herramientas, fábrica de modelo y secreto por inyección, lo que permite probar el ciclo de aprobación con el modelo mock del SDK, sin LLM.
+**Idempotencia y errores parciales:** antes de crear, `buscarOrdenPorReferencia` hace un `GET` filtrado por `YY1_SolicitudId`. Si el `POST` hace timeout, el estado es incierto: se vuelve a consultar antes de reintentar. Los reintentos usan backoff con jitter y solo aplican ante 5xx, 429 o timeout; un 4xx no se reintenta. Si la OC se crea pero falla el adjunto de evidencia (error parcial), la OC no se duplica. Se registra `resultado = creada_sin_evidencia` en control y se reintenta solo el adjunto. Los mensajes SAP (`sap-message`, `RETURN` tipo E/A) se traducen a errores legibles para el agente.
 
-**Riesgos aceptados (y por qué).**
-- **Sin autenticación del chat:** quien tenga la URL puede usar la demo y aprobar OC en el SAP simulado. Los límites acotan el costo. En producción va detrás del SSO corporativo (ver §9).
-- **Historial reenviado por el cliente:** el servidor no guarda estado (`useChat` manda la conversación completa), así que un cliente podría inventar resultados de tools en su historial. No puede inventar una aprobación (está firmada), y `crear_orden_compra` revalida controles y coherencia contra los archivos del servidor antes de escribir.
-- **Posiciones de la OC y elección entre varias cotizaciones:** no se contrastan todavía porque dependen del formato del PRD oficial. Hoy las protege la aprobación humana, que muestra el JSON exacto que se va a escribir, y el contraste del total cuando la solicitud lo declara.
-- **Servidor MCP:** corre por stdio en la máquina del usuario y publica las mismas tools. La confirmación de `crear_orden_compra` la hace el cliente MCP (la tool va marcada con `destructiveHint`), y la coherencia de la OC se verifica igual porque vive dentro de la tool.
-- **Dependencias:** `npm audit` reporta 10 avisos moderados de `minimatch`, solo en el linter (ESLint y typescript-eslint) y solo en desarrollo. Producción tiene 0 vulnerabilidades. La corrección automática bajaría ESLint de la versión 10 a la 9, así que se espera la actualización de upstream.
+**Plan B si la conexión no es viable:** el agente igual elimina la digitación. `oc_construir_payload` ya produce la OC validada y trazable; se agrega una salida "lista para pegar" (los campos en el orden de la transacción ME21N) y un archivo de carga masiva (CSV con el layout de LSMW o de la app Fiori de carga de OC). La analista solo carga el archivo y pega el número de OC devuelto, que el agente registra en `control.csv`. Los controles y la medición de retroactivas funcionan igual.
 
-## 9. Producción
+## 7. Lectura del proceso: OC retroactivas
 
-Persistencia (Postgres) para las OC, la auditoría y los contadores de rate limit (hoy en memoria de una sola instancia), autenticación del chat con el SSO corporativo, observabilidad (OpenTelemetry del AI SDK) y evaluaciones de regresión del prompt con los casos de demo.
+En los fixtures, sol-005 muestra el patrón completo: la factura (10 de agosto) llegó 17 días antes de la solicitud (27 de agosto), y el correo de aprobación lo dice sin rodeos: "Ya llegó la factura, por favor crear la OC para poder radicarla". La OC deja de ser un control previo del gasto y se convierte en un trámite para poder pagar. La cotización y la aprobación se vuelven retroactivas: se aprueba algo ya comprometido, sin margen real para negociar o rechazar.
+
+A la dirección le diría:
+
+1. **Primero medir, después decidir.** Desde ya, cada intento queda en `out/control.csv` con `retroactiva`, así que en un mes hay un porcentaje real por centro de costo, proveedor y aprobador, no una percepción.
+2. **El riesgo no es administrativo, es de control.** Una compra retroactiva salta el presupuesto comprometido y la comparación de cotizaciones, y concentra el poder de decisión en quien compra, no en quien aprueba.
+3. **Cambio de proceso propuesto:** que contabilidad no radique facturas sin OC previa (política "no PO, no pay") con un periodo de transición. Durante ese periodo, las retroactivas se aceptan solo con confirmación explícita y motivo, y se reportan mensualmente a cada líder. Para compras recurrentes de bajo monto (como papelería), se recomienda una OC abierta o marco anual, que elimina la razón práctica del desvío.
+
+La decisión de tolerarlas o rechazarlas es de la dirección (PRD, sección 10). El agente no la toma: las mide, las marca y exige confirmación.
+
+## 8. Decisiones y trade-offs
+
+| Decisión | Alternativa descartada | Por qué |
+|---|---|---|
+| Las herramientas **recalculan** paquete, derivados y payload desde los fixtures. Los argumentos `paquete`, `derivados` y `payload` del contrato se aceptan, pero no se confía en ellos (`oc_crear` rechaza un payload que no coincida) | Confiar en lo que el modelo reenvía | El riesgo señalado en el PRD es que el modelo "arregle" un monto. Si el valor nunca sale del modelo, no puede alterarlo. El costo es leer de nuevo unos KB de JSON por llamada |
+| Confirmación por **mensaje del usuario**, verificada en el servidor (`confirmado` + último mensaje) | Botones Aprobar/Rechazar con aprobación firmada por HMAC del AI SDK (estaba implementado) | El PRD pide que sol-001 se cree sin intervención y que la confirmación sea el siguiente mensaje (CA3). La aprobación por herramienta pedía clic incluso en el flujo normal. La verificación en el servidor mantiene la garantía de que el modelo no se autoconfirma |
+| Vercel AI SDK para el ciclo, con un `AdaptadorLLM` propio (`proveedor`, `modelo`, `crearModelo`) | Un bucle propio sobre la API del proveedor | El SDK ya resuelve streaming hacia el front, la validación zod de argumentos y la normalización entre proveedores. El adaptador propio aísla al proveedor: cambiarlo no toca `src/agent` |
+| SAP simulado sobre archivos (`out/sap/ordenes.jsonl`) con escrituras serializadas | Base de datos | El PRD lo pide sin base de datos. La cola en memoria evita números duplicados ante dos creaciones simultáneas en una instancia |
+| Límites de costo en el backend (pasos, tokens por paso, tokens por sesión, turnos diarios, rate limit por IP) | Confiar en el tope del proveedor | El link es público. Un usuario no debe poder agotar la clave |
+| Render (contenedor) | Vercel serverless | `out/` y las sesiones viven en el proceso. Una función serverless las perdería entre requests |
+
+## 9. Supuestos
+
+- `caso` es el nombre de la carpeta (`sol-001`) y `solicitud_id` es el id de negocio (`SOL-2026-001`). La idempotencia de SAP se hace por `solicitud_id`.
+- "Aprobado" se busca como palabra completa, sin distinguir mayúsculas. No se interpreta el resto del cuerpo.
+- RC9 y RC8 comparan fechas por día (sin hora ni zona horaria).
+- El NIT se compara sin el dígito de verificación. El nombre normalizado ignora tildes, mayúsculas, espacios y puntuación.
+- La OC tiene una posición (la solicitud trae un solo ítem). `unidad` se deriva de la descripción: "hora(s)" → `H`, "mensual"/"por mes" → `MES`, si no `UN`. Se marca como `derivado` en la trazabilidad.
+- El texto breve se trunca a 40 caracteres (límite SAP). El texto completo sigue en la solicitud.
+- La cotización trae precios con IVA incluido, así que se compara su TOTAL con `valor_total`.
+- `excepciones` de la OC son las confirmaciones aceptadas, con `confirmado_por` igual a la sesión de la analista.
+- Cada intento de `oc_crear` (creada, idempotente, bloqueada o pendiente) es una fila de `control.csv`. Validar sin crear no escribe en control.
+- La clave de acceso al link no se exige (PRD 6.1: el link puede ser público). Los límites protegen el costo.
+
+## 10. Cobertura
+
+| Historia | Estado | Notas / qué falta para producción |
+|---|---|---|
+| HU-1 Leer el paquete | Hecho | Adjuntos ausentes → `null` + `faltantes`. P1 `oc_leer_excel` no hecho (los fixtures traen JSON) |
+| HU-2 Validar | Hecho | RC1–RC10 con pruebas por caso y por regla |
+| HU-3 Payload | Hecho | Esquema zod de 7.4 y `out/<caso>/trazabilidad.json` por campo |
+| HU-4 Evidencia | Parcial | P0 `aprobacion.txt` con sha256 hecho. P1 PDF no hecho (sería `pdf-lib` sobre el mismo texto) |
+| HU-5 Crear OC | Hecho | Numeración desde 4500000001, idempotencia, `out/control.csv` |
+| HU-6 Errores | Hecho | `{ ok: false, error }` legible: JSON malformado, monto no numérico, caso inexistente |
+| Front (tool calls, confirmación) | Hecho | Resumen y detalle de cada llamada, aviso de confirmación, indicador "pensando" |
+| `demo.ts` | Hecho | 6 casos, idempotencia de sol-001 y confirmación explícita de sol-004 (y de sol-005) |
+| Bonus `modulo/` | Hecho | Generado desde las mismas fuentes, con un test que impide la divergencia |
+
+Para producción falta: persistencia real (Postgres) para sesiones, control y log; autenticación con el SSO corporativo; el adaptador SAP real; y la evidencia en PDF.
+
+## 11. Uso de IA
+
+- **Asistente:** Claude Code (Claude Opus 5.5) durante todo el desarrollo.
+- **Para qué:**
+  - Andamiaje inicial y lectura del PRD.
+  - Implementación de dominio, herramientas, servidor y front.
+  - Tests.
+  - Revisiones de seguridad y de deuda técnica, con jueces independientes que revisan el diff sin ver el razonamiento.
+  - Pruebas en navegador y en Docker.
+  - Redacción de esta documentación.
+- **Lo que se descartó de sus propuestas, y por qué:**
+  - **Botones de aprobación con HMAC** (estaba implementado): se reemplazaron por la confirmación por mensaje porque el PRD exige que sol-001 se cree sin intervención (CA3).
+  - **IP del cliente desde el último salto de `X-Forwarded-For`** para el rate limit: según reportes de la comunidad de Render, el proxy de Render agrega su IP al final, así que todos caerían en un solo bucket. Se usa `True-Client-IP` (Cloudflare).
+  - **Comparar el total de la OC con flotantes:** se reemplazó por la comparación en centavos enteros.
+  - **Confiar en el payload que reenvía el modelo:** se reemplazó por recalcularlo en el servidor.
+- **Cómo se verificó:** cada línea se revisó y se probó. Hay 84 tests, typecheck estricto, ESLint con cero warnings, `npm run demo` sobre los 6 casos y la prueba manual del flujo de sol-004 con el modelo real.
+
+## 12. Riesgos de llevarlo a producción
+
+| Riesgo | Mitigación |
+|---|---|
+| La conexión a SAP no es viable en el corto plazo | Plan B de la sección 6 (OC lista para pegar y archivo de carga masiva). Los controles y la medición funcionan igual |
+| Inyección de prompt desde correos o cotizaciones | Los montos y datos los calculan las herramientas desde los archivos, no el modelo. El prompt trata los documentos como datos. `oc_crear` revalida y rechaza un payload alterado |
+| El modelo se autoconfirma | La confirmación se verifica en el servidor contra el último mensaje real del usuario |
+| Costo del LLM con un link público | Topes de pasos, tokens por paso y por sesión, turnos diarios y rate limit por IP (configurables por entorno) |
+| Pérdida de sesiones, control y log al reiniciar (estado en memoria y disco efímero) | En producción: Postgres para sesiones, control y log, y almacenamiento persistente para la evidencia |
+| Maestros desactualizados (en los fixtures son estáticos) | Consultar proveedores, centros y aprobadores en SAP en tiempo real a través del `SapAdapter` |
+| La evidencia del correo no basta para auditoría | Firma digital o adjuntar el `.eml` original con su hash. Hoy se guarda el sha256 del contenido |
+| Varias instancias del backend | La serialización de escrituras es por proceso. En producción, idempotencia por `YY1_SolicitudId` en SAP y un lock por solicitud en Postgres |
+| Seguridad del endpoint público | Validación de entrada (zod y mensajes con roles `user`/`assistant`), CSP estricta y `frame-ancestors 'none'`, errores genéricos al cliente y logs sin el prompt. La clave del modelo solo vive en el entorno del backend |
