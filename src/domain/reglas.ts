@@ -135,8 +135,11 @@ function reglaAprobacion(paquete: Paquete, centro: CentroCosto | null, aprobador
   if (!aprobacion) return [{ regla: 'RC2', detalle: 'No hay correo de aprobación. Acción: pedir la aprobación del líder del centro de costo' }];
   if (!aprobacion.aprobado) return [{ regla: 'RC2', detalle: `El correo de ${aprobacion.de} no contiene "Aprobado"` }];
   if (centro && !aprobador) {
-    const validos = centro.aprobadores.map((a) => a.email).join(', ');
-    return [{ regla: 'RC2', detalle: `${aprobacion.de} no es aprobador de ${solicitud.centro_costo}. Acción: pedir aprobación a ${validos}` }];
+    const conTope = centro.aprobadores.filter((a) => a.tope >= solicitud.valor_total).map((a) => a.email);
+    const accion = conTope.length
+      ? `pedir aprobación a ${conTope.join(', ')}`
+      : `ningún aprobador de ${solicitud.centro_costo} tiene tope para ${formatoCop(solicitud.valor_total)}; escalar la aprobación o dividir la compra`;
+    return [{ regla: 'RC2', detalle: `${aprobacion.de} no es aprobador de ${solicitud.centro_costo}. Acción: ${accion}` }];
   }
   return [];
 }

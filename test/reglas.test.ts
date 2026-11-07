@@ -43,6 +43,12 @@ describe('casos oficiales del reto (fixtures)', () => {
     expect(v.derivados.condiciones_pago).toMatchObject({ valor: 'Z030', regla: 'RC7' });
   });
 
+  it('sol-003 no sugiere un aprobador sin tope suficiente para el monto', async () => {
+    const v = validarPaquete(await paquete('sol-003'), await maestros());
+    expect(v.bloqueos[0]?.detalle).toMatch(/ningún aprobador de CC-2020 tiene tope/);
+    expect(v.bloqueos[0]?.detalle).not.toMatch(/pedir aprobación a rtorres/);
+  });
+
   it('sol-004 informa ambos valores en la confirmación RC5', async () => {
     const v = validarPaquete(await paquete('sol-004'), await maestros());
     expect(v.confirmaciones[0]?.detalle).toMatch(/26\.500\.000.*25\.000\.000/);
