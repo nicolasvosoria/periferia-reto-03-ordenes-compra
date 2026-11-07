@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { verificarCoherenciaOC } from '../domain/coherencia-oc.ts';
 import { evaluar } from '../domain/controles.ts';
 import { solicitudIdSchema as solicitudId } from '../domain/expediente.ts';
-import { leerMaestros, leerSolicitud, listarSolicitudes } from '../infra/fixtures.ts';
-import { matrizControles } from '../domain/matriz-controles.ts';
+import { matrizControles, type ContextoSolicitud } from '../domain/matriz-controles.ts';
 import type { SapPort } from '../domain/sap.ts';
+import { leerMaestros, leerSolicitud, listarSolicitudes } from '../infra/fixtures.ts';
 
 /**
  * Catálogo único de herramientas. El agente (AI SDK), el servidor MCP y demo.ts
@@ -37,10 +38,12 @@ const ordenCompra = z.object({
     .min(1),
 });
 
-async function validar(id: string) {
+async function leerContexto(id: string): Promise<ContextoSolicitud> {
   const [expediente, maestros] = await Promise.all([leerSolicitud(id), leerMaestros()]);
-  return { solicitudId: id, ...evaluar(matrizControles, { expediente, maestros }) };
+  return { expediente, maestros };
 }
+
+const validar = (id: string, contexto: ContextoSolicitud) => ({ solicitudId: id, ...evaluar(matrizControles, contexto) });
 
 export function crearHerramientas(sap: SapPort) {
   return {
@@ -64,17 +67,22 @@ export function crearHerramientas(sap: SapPort) {
       descripcion:
         'Ejecuta la matriz de controles determinista y devuelve el veredicto (apta, requiere_confirmacion o rechazada) con la evidencia de cada control.',
       entrada: z.object({ solicitudId }),
-      ejecutar: ({ solicitudId }) => validar(solicitudId),
+      ejecutar: async ({ solicitudId }) => validar(solicitudId, await leerContexto(solicitudId)),
     }),
     crear_orden_compra: herramienta({
       descripcion:
-        'Crea la orden de compra en SAP. Requiere confirmación humana. Es idempotente por solicitudId y se niega si la validación da rechazada.',
+        'Crea la orden de compra en SAP. Requiere confirmación humana. Es idempotente por solicitudId y se niega si la validación da rechazada o si la OC no coincide con la solicitud y los maestros.',
       entrada: ordenCompra,
       requiereAprobacion: true,
       ejecutar: async (input) => {
-        const validacion = await validar(input.solicitudId);
+        const contexto = await leerContexto(input.solicitudId);
+        const validacion = validar(input.solicitudId, contexto);
         if (validacion.veredicto === 'rechazada') {
           return { creada: false, motivo: 'La solicitud no supera los controles bloqueantes', validacion };
+        }
+        const incoherencias = verificarCoherenciaOC(input, contexto);
+        if (incoherencias.length > 0) {
+          return { creada: false, motivo: 'La OC no coincide con el expediente ni con los maestros', incoherencias };
         }
         const { orden, duplicada } = await sap.crearOrdenCompra(input);
         return { creada: !duplicada, duplicada, orden };

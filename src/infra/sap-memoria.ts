@@ -1,4 +1,4 @@
-import type { OrdenCompra, OrdenCompraInput, SapPort } from '../domain/sap.ts';
+import { calcularTotal, type OrdenCompra, type OrdenCompraInput, type SapPort } from '../domain/sap.ts';
 
 export class SapEnMemoria implements SapPort {
   private readonly ordenes = new Map<string, OrdenCompra>();
@@ -13,7 +13,7 @@ export class SapEnMemoria implements SapPort {
       ...input,
       numero: String(++this.consecutivo),
       creadaEn: this.reloj().toISOString(),
-      total: input.posiciones.reduce((s, p) => s + p.cantidad * p.precioUnitario, 0),
+      total: calcularTotal(input.posiciones),
     };
     this.ordenes.set(input.solicitudId, orden);
     return { orden, duplicada: false };

@@ -28,3 +28,10 @@ export interface SapPort {
   crearOrdenCompra(input: OrdenCompraInput): Promise<{ orden: OrdenCompra; duplicada: boolean }>;
   consultarOrden(solicitudId: string): Promise<OrdenCompra | undefined>;
 }
+
+export const enCentavos = (valor: number) => Math.round(valor * 100);
+
+export const totalEnCentavos = (posiciones: PosicionOC[]) =>
+  posiciones.reduce((suma, p) => suma + enCentavos(p.cantidad * p.precioUnitario), 0);
+
+export const calcularTotal = (posiciones: PosicionOC[]) => totalEnCentavos(posiciones) / 100;
