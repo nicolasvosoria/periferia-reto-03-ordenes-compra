@@ -2,7 +2,7 @@
 
 Agente conversacional en TypeScript que lee el paquete de una solicitud de compra, lo valida contra los maestros (reglas RC1–RC10), construye la OC tal como quedaría en SAP, genera la evidencia de aprobación y crea la OC en un SAP simulado. Las excepciones se devuelven a la analista con una recomendación, y lo que requiere confirmación espera su siguiente mensaje. El planteamiento completo está en [SOLUCION.md](SOLUCION.md) y el enunciado en [docs/PRD.md](docs/PRD.md).
 
-**Link de prueba:** _(URL de Render, pendiente de despliegue)_. Sin clave de acceso: los límites de uso protegen el costo.
+**Link de prueba:** https://agente-oc-periferia-j2zr.onrender.com (sin clave de acceso; los límites de uso protegen el costo). En el plan free de Render el servicio se duerme tras 15 min sin tráfico: el primer request tarda ~50 s en despertarlo.
 
 ## Levantar en local
 
