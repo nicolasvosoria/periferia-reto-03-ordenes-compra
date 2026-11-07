@@ -14,6 +14,17 @@ interface OrdenRegistrada {
   orden: OrdenCompra;
 }
 
+const instanciasPorArchivo = new Map<string, SapMock>();
+
+export function sapMockCompartido(directorioSalida: string, proveedores: Proveedor[]): SapMock {
+  const archivo = path.join(directorioSalida, 'sap', 'ordenes.jsonl');
+  const existente = instanciasPorArchivo.get(archivo);
+  if (existente) return existente;
+  const nuevo = new SapMock(directorioSalida, proveedores);
+  instanciasPorArchivo.set(archivo, nuevo);
+  return nuevo;
+}
+
 export class SapMock implements SapAdapter {
   private readonly archivo: string;
   private cola: Promise<unknown> = Promise.resolve();

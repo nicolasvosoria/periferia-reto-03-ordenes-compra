@@ -16,7 +16,12 @@ export interface FilaControl {
 
 const COLUMNAS_CONTROL = ['solicitud_id', 'resultado', 'numero_oc', 'retroactiva', 'bloqueos', 'confirmaciones', 'ts', 'origen'] as const;
 
-const celdaCsv = (valor: string) => (/[",\n]/.test(valor) ? `"${valor.replace(/"/g, '""')}"` : valor);
+const neutralizarFormula = (valor: string) => (/^[=+\-@]/.test(valor) ? `'${valor}` : valor);
+
+const celdaCsv = (crudo: string) => {
+  const valor = neutralizarFormula(crudo);
+  return /[",\n]/.test(valor) ? `"${valor.replace(/"/g, '""')}"` : valor;
+};
 
 async function agregarLinea(ruta: string, linea: string) {
   await mkdir(path.dirname(ruta), { recursive: true });

@@ -118,14 +118,13 @@ const responderError: ErrorHandler = (error, c) => {
 };
 
 function limitarPorIp(config: LimitesChat): MiddlewareHandler {
-  const porIp = crearLimitadorVentana({
-    maximo: config.requestsPorIpPorMinuto,
-    ventanaMs: MINUTO_MS,
-    maxClaves: config.maxIpsRastreadas,
-  });
+  const porMinuto = crearLimitadorVentana({ maximo: config.requestsPorIpPorMinuto, ventanaMs: MINUTO_MS, maxClaves: config.maxIpsRastreadas });
+  const porDia = crearLimitadorVentana({ maximo: config.turnosPorIpPorDia, ventanaMs: DIA_MS, maxClaves: config.maxIpsRastreadas });
   return async (c, siguiente) => {
-    if (porIp.consumir(ipDelCliente(c))) return siguiente();
-    return c.json({ error: 'Demasiadas solicitudes seguidas. Espera un minuto e intenta de nuevo.' }, 429);
+    const ip = ipDelCliente(c);
+    if (!porMinuto.consumir(ip)) return c.json({ error: 'Demasiadas solicitudes seguidas. Espera un minuto e intenta de nuevo.' }, 429);
+    if (!porDia.consumir(ip)) return c.json({ error: 'Alcanzaste el límite diario de uso de la demo desde esta conexión.' }, 429);
+    return siguiente();
   };
 }
 

@@ -29,6 +29,15 @@ describe('límites de /api/chat', () => {
     expect((await bloqueada.json()).error).toMatch(/Espera un minuto/);
   });
 
+  it('limita los turnos diarios por IP aunque cambie la sesión', async () => {
+    const aplicacion = app({ turnosPorIpPorDia: 1 });
+    const desde = { 'True-Client-IP': '203.0.113.50' };
+    expect((await postChat(aplicacion, { id: 'a', messages: [mensaje('hola')] }, desde)).status).toBe(200);
+    const bloqueada = await postChat(aplicacion, { id: 'b', messages: [mensaje('hola')] }, desde);
+    expect(bloqueada.status).toBe(429);
+    expect((await bloqueada.json()).error).toMatch(/límite diario/);
+  });
+
   it('cada IP del borde tiene su propio cupo', async () => {
     const aplicacion = app({ requestsPorIpPorMinuto: 1 });
     expect((await postChat(aplicacion, conversacion, { 'True-Client-IP': '203.0.113.1' })).status).toBe(200);

@@ -100,6 +100,7 @@ export function normalizarPaquete(archivos: Record<string, unknown>): Resultado<
   if (!correo.success) return { ok: false, error: primerError(correo.error, 'correo.json') };
 
   const aprobacion = aprobacionSchema.safeParse(archivos['aprobacion.json']);
+  if ('aprobacion.json' in archivos && !aprobacion.success) return { ok: false, error: primerError(aprobacion.error, 'aprobacion.json') };
   const textoCotizacion = archivos['cotizacion.txt'];
   const textoFactura = archivos['factura.txt'];
   return {

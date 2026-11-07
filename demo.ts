@@ -54,4 +54,4 @@ await procesar('sol-004', { ...ctx, ultimoMensajeUsuario: 'Confirmo la creación
 console.log('\n── Retroactiva confirmada: sol-005 queda creada y marcada retroactiva=true en out/control.csv');
 await procesar('sol-005', { ...ctx, ultimoMensajeUsuario: 'Sí, confirmo' }, true);
 
-console.log('\nSalida: out/control.csv, out/log.jsonl, out/sap/ordenes.jsonl, out/<caso>/{aprobacion.txt,trazabilidad.json}');
+console.log('\nSalida: out/control.csv, out/log.jsonl, out/sap/ordenes.jsonl, out/<caso>/{aprobacion.txt,aprobacion.pdf,trazabilidad.json}');

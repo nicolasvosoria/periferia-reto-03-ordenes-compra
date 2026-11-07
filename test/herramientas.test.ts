@@ -85,6 +85,15 @@ describe('oc_crear', () => {
     expect(readFileSync(path.join(ctx.salida ?? '', 'sap/ordenes.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1);
   });
 
+  it('dos sesiones concurrentes sobre la misma solicitud producen una sola OC', async () => {
+    const ctx = contextoDePrueba();
+    const resultados = await Promise.all(
+      ['s-a', 's-b', 's-c'].map(async (sessionId) => json(crear.execute({ caso: 'sol-001' }, { ...ctx, sessionId }))),
+    );
+    expect(new Set(resultados.map((r) => r.data.numero_oc))).toEqual(new Set(['4500000001']));
+    expect(readFileSync(path.join(ctx.salida ?? '', 'sap/ordenes.jsonl'), 'utf8').trim().split('\n')).toHaveLength(1);
+  });
+
   it('no crea OC con bloqueos y lo deja en control.csv', async () => {
     const ctx = contextoDePrueba();
     expect(await json(crear.execute({ caso: 'sol-002' }, ctx))).toMatchObject({ ok: false, error: expect.stringMatching(/RC1/) });
@@ -139,7 +148,11 @@ describe('detección de confirmación humana', () => {
     ['sí', true],
     ['Sí', true],
     ['sí.', true],
+    ['ok', true],
     ['así no', false],
+    ['Crea la OC de sol-002 si cumple', false],
+    ['Procesa sol-003 y avísame si hay excepciones', false],
+    ['ok, muéstrame primero la tabla', false],
     ['sí, procede', true],
     ['ok, adelante', true],
     ['no confirmo', false],

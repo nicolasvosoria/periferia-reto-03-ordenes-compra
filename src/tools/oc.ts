@@ -11,7 +11,7 @@ import { referenciaArgs, resolverOrigen, type OrigenPaquete } from '../infra/ori
 import { pdfDeTexto } from '../infra/pdf.ts';
 import { registrarError } from '../infra/registro.ts';
 import { escribirArchivo, registrarControl, registrarLlamada, type FilaControl } from '../infra/salida.ts';
-import { SapMock } from '../sap/mock.ts';
+import { sapMockCompartido } from '../sap/mock.ts';
 
 export interface ContextoHerramienta {
   directory: string;
@@ -43,7 +43,7 @@ function herramienta<A extends z.ZodRawShape>(
       const resultado = await definicion.ejecutar(args, ctx).catch((error: unknown): Resultado<unknown> => {
         if (error instanceof ErrorDeDatos) return { ok: false, error: error.message };
         registrarError(`oc_${nombre}`, error);
-        return { ok: false, error: `Error interno en oc_${nombre}: ${error instanceof Error ? error.message : String(error)}` };
+        return { ok: false, error: `Error interno en oc_${nombre}; quedó registrado en el servidor. Intenta de nuevo.` };
       });
       await registrarLlamada(salidaDe(ctx), {
         ts: new Date().toISOString(),
@@ -102,11 +102,12 @@ async function guardarTrazabilidad(ctx: ContextoHerramienta, origen: OrigenPaque
   return path.relative(ctx.directory, ruta);
 }
 
-const CONFIRMACION_HUMANA = /(?<![\p{L}\p{N}])(confirmo|confirmado|confirmada|s[ií]|apruebo|procede|adelante|dale|ok)(?![\p{L}\p{N}])/iu;
+const VERBO_DE_CONFIRMACION = /(?<![\p{L}\p{N}])(confirmo|confirmado|confirmada|apruebo|procede|adelante)(?![\p{L}\p{N}])/iu;
+const AFIRMACION_SOLA = /^\s*(s[ií]|ok|dale)\s*[.!]*\s*$/iu;
 const NEGACION = /(?<![\p{L}\p{N}])no(?![\p{L}\p{N}])/iu;
 
 export const confirmaEnSuMensaje = (mensaje: string | undefined) =>
-  !!mensaje && CONFIRMACION_HUMANA.test(mensaje) && !NEGACION.test(mensaje);
+  !!mensaje && !NEGACION.test(mensaje) && (VERBO_DE_CONFIRMACION.test(mensaje) || AFIRMACION_SOLA.test(mensaje));
 
 const sinConfirmador = (orden: OrdenCompra) =>
   JSON.stringify({ ...orden, excepciones: orden.excepciones.map((e) => ({ ...e, confirmado_por: null })) });
@@ -198,7 +199,7 @@ export const crear = herramienta('crear', {
       return { ok: false, error: `OC bloqueada: ${validacion.bloqueos.map((b) => `${b.regla} ${b.detalle}`).join('; ')}` };
     }
 
-    const sap = new SapMock(salida, maestros.proveedores);
+    const sap = sapMockCompartido(salida, maestros.proveedores);
     const existente = await sap.buscarOrdenPorReferencia(solicitudId);
     const requiereConfirmacion = validacion.confirmaciones.length > 0 && !existente;
     if (requiereConfirmacion && !(confirmado === true && confirmaEnSuMensaje(ctx.ultimoMensajeUsuario))) {

@@ -23,7 +23,7 @@ En modo producción (un solo puerto): `npm run build && npm start` → http://lo
 | `OPENCODE_API_KEY` | Sí | Clave del gateway OpenCode. Solo vive en el backend |
 | `OPENCODE_BASE_URL` | No | Endpoint OpenAI-compatible (por defecto, OpenCode Go) |
 | `MODEL` | No | Modelo (por defecto `deepseek-v4.1-flash`) |
-| `MAX_PASOS` | No | Tope de iteraciones herramienta → modelo por turno (25) |
+| `MAX_PASOS` | No | Tope de iteraciones herramienta → modelo por turno (12; un caso completo usa unas 6) |
 | `MAX_TOKENS_SESION` | No | Tope de tokens por conversación (300 000) |
 | `MAX_TURNOS_DIARIOS` | No | Turnos de chat por día para toda la demo (500) |
 | `UPLOAD_ENABLED` | No | Carga de documentos desde el chat (`true`/`false`). Por defecto apagada en producción y encendida en local |

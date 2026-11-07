@@ -1,4 +1,8 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { registrarControl } from '../src/infra/salida.ts';
+import { salidaTemporal } from './apoyo.ts';
 import { resumirControl } from '../src/domain/control.ts';
 
 const fila = (solicitud_id: string, resultado: string, numero_oc = '', retroactiva = false) => ({
@@ -23,5 +27,16 @@ describe('resumen del log de control', () => {
 
   it('sin intentos devuelve ceros', () => {
     expect(resumirControl([])).toMatchObject({ intentos: 0, solicitudes: 0, porcentajeRetroactivas: 0 });
+  });
+});
+
+describe('escritura del log de control', () => {
+  it('neutraliza valores que Excel interpretaría como fórmula', async () => {
+    const salida = salidaTemporal();
+    await registrarControl(salida, {
+      solicitud_id: '-A1', resultado: 'bloqueada', numero_oc: null, retroactiva: false,
+      bloqueos: ['RC1'], confirmaciones: [], ts: '2026-01-01T00:00:00Z', origen: 'caso:sol-001',
+    });
+    expect(readFileSync(path.join(salida, 'control.csv'), 'utf8')).toContain("\n'-A1,bloqueada,");
   });
 });

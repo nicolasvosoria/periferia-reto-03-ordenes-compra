@@ -6,6 +6,7 @@ export interface LimitesChat {
   maxMensajes: number;
   requestsPorIpPorMinuto: number;
   requestsDiarias: number;
+  turnosPorIpPorDia: number;
   maxIpsRastreadas: number;
   maxPasos: number;
   maxTokensSalida: number;
@@ -14,15 +15,16 @@ export interface LimitesChat {
 }
 
 export const LIMITES_POR_DEFECTO: LimitesChat = {
-  maxBytes: 1024 * 1024,
+  maxBytes: 256 * 1024,
   maxMensajes: 80,
   requestsPorIpPorMinuto: 30,
   requestsDiarias: 500,
+  turnosPorIpPorDia: 80,
   maxIpsRastreadas: 10_000,
-  maxPasos: 25,
+  maxPasos: 12,
   maxTokensSalida: 8000,
   maxTokensSesion: 300_000,
-  maxSesiones: 1000,
+  maxSesiones: 200,
 };
 
 const entero = (valor: string | undefined) => (valor && /^\d+$/.test(valor) ? Number(valor) : undefined);

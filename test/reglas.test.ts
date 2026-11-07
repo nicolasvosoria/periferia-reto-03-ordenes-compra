@@ -125,6 +125,12 @@ describe('lectura de documentos', () => {
     expect(normalizarPaquete(archivos)).toEqual({ ok: false, error: expect.stringMatching(/solicitud_id/) });
   });
 
+  it('una aprobación con formato inválido devuelve un error legible en vez de null', async () => {
+    const archivos = await leerCaso(raiz, 'sol-001');
+    archivos['aprobacion.json'] = { de: 'x' };
+    expect(normalizarPaquete(archivos)).toEqual({ ok: false, error: expect.stringMatching(/^aprobacion\.json:/) });
+  });
+
   it('un monto no numérico devuelve un error legible', async () => {
     const archivos = await leerCaso(raiz, 'sol-001');
     archivos['solicitud.json'] = { ...(archivos['solicitud.json'] as object), valor_total: 'once millones' };
