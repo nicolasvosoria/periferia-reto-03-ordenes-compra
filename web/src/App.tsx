@@ -5,6 +5,17 @@ import { ToolCall } from './ToolCall.tsx';
 
 const Markdown = lazy(() => import('./Markdown.tsx'));
 
+const ERROR_SIN_DETALLE = 'No se pudo contactar al agente. Intenta de nuevo.';
+
+function mensajeDeError(error: Error): string {
+  try {
+    const cuerpo: { error?: unknown } = JSON.parse(error.message);
+    return typeof cuerpo.error === 'string' ? cuerpo.error : ERROR_SIN_DETALLE;
+  } catch {
+    return ERROR_SIN_DETALLE;
+  }
+}
+
 export function App() {
   const [input, setInput] = useState('');
   const { messages, sendMessage, addToolApprovalResponse, status, error } = useChat({
@@ -41,7 +52,7 @@ export function App() {
             })}
           </article>
         ))}
-        {error && <p className="error">Error: {error.message}</p>}
+        {error && <p className="error" role="alert">{mensajeDeError(error)}</p>}
       </section>
 
       <form

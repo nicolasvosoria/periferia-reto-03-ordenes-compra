@@ -7,6 +7,7 @@ const instrucciones = readFileSync(new URL('../../agent/prompt.md', import.meta.
 
 const PLACEHOLDER_HEREDADO = 'cambia-esto-por-un-valor-aleatorio-largo';
 const LONGITUD_MINIMA_SECRETO = 32;
+const MAX_TOKENS_SALIDA_POR_PASO = 2000;
 
 export function exigirSecretoAprobacion(secreto: string | undefined): string {
   if (!secreto) {
@@ -57,6 +58,7 @@ export function ejecutarAgente({ herramientas, modelo, secretoAprobacion, messag
     toolApproval: aprobaciones,
     experimental_toolApprovalSecret: secreto,
     stopWhen: isStepCount(15),
+    maxOutputTokens: MAX_TOKENS_SALIDA_POR_PASO,
     onError: ({ error }) => registrarError('agente', error),
   });
 }
