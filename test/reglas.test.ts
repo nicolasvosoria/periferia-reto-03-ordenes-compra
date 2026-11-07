@@ -24,7 +24,7 @@ describe('casos oficiales del reto (fixtures)', () => {
   it.each([
     ['sol-001', true, [], [], false],
     ['sol-002', false, ['RC1'], [], false],
-    ['sol-003', false, ['RC2'], [], false],
+    ['sol-003', false, ['RC2', 'RC3'], [], false],
     ['sol-004', true, [], ['RC5'], false],
     ['sol-005', true, [], ['RC8'], true],
     ['sol-006', true, [], ['RC6'], false],
@@ -43,10 +43,11 @@ describe('casos oficiales del reto (fixtures)', () => {
     expect(v.derivados.condiciones_pago).toMatchObject({ valor: 'Z030', regla: 'RC7' });
   });
 
-  it('sol-003 no sugiere un aprobador sin tope suficiente para el monto', async () => {
+  it('sol-003 lista RC2 (aprobador de otro centro) y RC3 (nadie en CC-2020 cubre 74 M) sin sugerir a rtorres', async () => {
     const v = validarPaquete(await paquete('sol-003'), await maestros());
-    expect(v.bloqueos[0]?.detalle).toMatch(/ningún aprobador de CC-2020 tiene tope/);
+    expect(v.bloqueos[0]?.detalle).toMatch(/no es aprobador de CC-2020/);
     expect(v.bloqueos[0]?.detalle).not.toMatch(/pedir aprobación a rtorres/);
+    expect(v.bloqueos[1]?.detalle).toMatch(/Ningún aprobador de CC-2020 tiene tope para COP 74\.000\.000.*rtorres/);
   });
 
   it('sol-004 informa ambos valores en la confirmación RC5', async () => {
@@ -84,6 +85,18 @@ describe('reglas sobre variantes de los casos', () => {
     const base = await paquete('sol-001');
     const sinAprobar = base.aprobacion ? { ...base.aprobacion, aprobado: false } : null;
     expect(reglasDe((await variar({}, { aprobacion: sinAprobar })).bloqueos)).toContain('RC2');
+  });
+
+  it.each([
+    ['No aprobado, falta presupuesto.', false],
+    ['La compra no fue aprobada.', false],
+    ['APROBADO', true],
+    ['Aprobada por gerencia', true],
+  ])('lee la aprobación "%s" como aprobado=%s', async (cuerpo, esperado) => {
+    const archivos = await leerCaso(raiz, 'sol-001');
+    archivos['aprobacion.json'] = { ...(archivos['aprobacion.json'] as object), cuerpo };
+    const r = normalizarPaquete(archivos);
+    expect(r.ok && r.data.aprobacion?.aprobado).toBe(esperado);
   });
 
   it('RC5 pide confirmación si no hay cotización', async () => {

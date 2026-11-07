@@ -59,12 +59,7 @@ export function validarPaquete(paquete: Paquete, maestros: Maestros): Validacion
 
   const aprobador = buscarAprobador(paquete, centro);
   bloqueos.push(...reglaAprobacion(paquete, centro, aprobador));
-  if (aprobador && solicitud.valor_total > aprobador.tope) {
-    bloqueos.push({
-      regla: 'RC3',
-      detalle: `El valor ${formatoCop(solicitud.valor_total)} supera el tope de ${aprobador.email} (${formatoCop(aprobador.tope)}) en ${solicitud.centro_costo}`,
-    });
-  }
+  bloqueos.push(...reglaTope(solicitud.valor_total, solicitud.centro_costo, centro, aprobador));
 
   const calculado = solicitud.cantidad * solicitud.valor_unitario;
   if (Math.abs(calculado - solicitud.valor_total) > TOLERANCIA_ARITMETICA) {
@@ -117,6 +112,20 @@ function reglaProveedor(paquete: Paquete, proveedor: Proveedor | null): Hallazgo
   return [];
 }
 
+function reglaTope(valor: number, centroCosto: string, centro: CentroCosto | null, aprobador: { email: string; tope: number } | null): Hallazgo[] {
+  if (aprobador) {
+    return valor > aprobador.tope
+      ? [{ regla: 'RC3', detalle: `El valor ${formatoCop(valor)} supera el tope de ${aprobador.email} (${formatoCop(aprobador.tope)}) en ${centroCosto}` }]
+      : [];
+  }
+  if (!centro || centro.aprobadores.some((a) => a.tope >= valor)) return [];
+  const mayor = centro.aprobadores.reduce((max, a) => (a.tope > max.tope ? a : max), centro.aprobadores[0] ?? { email: '—', tope: 0 });
+  return [{
+    regla: 'RC3',
+    detalle: `Ningún aprobador de ${centroCosto} tiene tope para ${formatoCop(valor)} (el mayor es ${mayor.email}: ${formatoCop(mayor.tope)}). Acción: escalar la aprobación o dividir la compra`,
+  }];
+}
+
 function reglaSubarea(centroCosto: string, subarea: string, centro: CentroCosto | null): Hallazgo[] {
   if (!centro) return [{ regla: 'RC4', detalle: `El centro de costo ${centroCosto} no existe en el maestro` }];
   if (!centro.subareas.includes(subarea)) {
@@ -138,7 +147,7 @@ function reglaAprobacion(paquete: Paquete, centro: CentroCosto | null, aprobador
     const conTope = centro.aprobadores.filter((a) => a.tope >= solicitud.valor_total).map((a) => a.email);
     const accion = conTope.length
       ? `pedir aprobación a ${conTope.join(', ')}`
-      : `ningún aprobador de ${solicitud.centro_costo} tiene tope para ${formatoCop(solicitud.valor_total)}; escalar la aprobación o dividir la compra`;
+      : `ningún aprobador de ${solicitud.centro_costo} cubre el monto (ver RC3)`;
     return [{ regla: 'RC2', detalle: `${aprobacion.de} no es aprobador de ${solicitud.centro_costo}. Acción: ${accion}` }];
   }
   return [];

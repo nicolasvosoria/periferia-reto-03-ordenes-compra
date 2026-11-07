@@ -84,6 +84,11 @@ export function leerFactura(texto: string): Paquete['factura'] {
   return numero && fecha && total ? { numero, fecha, total: montoCop(total) } : null;
 }
 
+const APROBADO = /\baprobad[oa]\b/i;
+const NEGADO = /\bno\s+(?:est[aá]\s+|queda\s+|fue\s+|ha\s+sido\s+)?aprobad[oa]\b/i;
+
+const diceAprobado = (cuerpo: string) => APROBADO.test(cuerpo) && !NEGADO.test(cuerpo);
+
 const ARCHIVOS_OPCIONALES = ['cotizacion.txt', 'aprobacion.json'] as const;
 
 function primerError(error: z.ZodError, archivo: string) {
@@ -115,7 +120,7 @@ export function normalizarPaquete(archivos: Record<string, unknown>): Resultado<
             para: aprobacion.data.para,
             asunto: aprobacion.data.asunto,
             fecha: aprobacion.data.fecha,
-            aprobado: /\baprobado\b/i.test(aprobacion.data.cuerpo),
+            aprobado: diceAprobado(aprobacion.data.cuerpo),
             texto: aprobacion.data.cuerpo,
           }
         : null,

@@ -68,8 +68,8 @@ Un cambio en las reglas de negocio toca `src/domain/reglas.ts` y `src/knowledge/
 | Regla | Implementación | Tipo |
 |---|---|---|
 | RC1 | Busca el proveedor por NIT normalizado (solo dígitos, sin dígito de verificación) desde la solicitud o la cotización. Sin NIT, por nombre normalizado (sin tildes, mayúsculas ni puntuación). Debe estar `activo` | Bloqueo |
-| RC2 | Debe existir la aprobación, contener "Aprobado" (palabra completa) y venir de un `aprobadores[].email` del centro | Bloqueo |
-| RC3 | `valor_total` ≤ `tope` del aprobador encontrado | Bloqueo |
+| RC2 | Debe existir la aprobación, decir "Aprobado/a" (sin distinguir mayúsculas y sin una negación como "no aprobado" o "no fue aprobada") y venir de un `aprobadores[].email` del centro | Bloqueo |
+| RC3 | `valor_total` ≤ `tope` del aprobador del centro. Si el aprobador no pertenece al centro, se bloquea igual cuando ningún aprobador del centro tiene tope suficiente, para que `bloqueos[]` liste todas las reglas aplicables | Bloqueo |
 | RC4 | El centro existe y la subárea está en sus `subareas` | Bloqueo |
 | RC5 | `|cotización − solicitud| / solicitud ≤ 2 %`. Sin cotización legible: confirmación. El detalle lleva ambos valores | Confirmación |
 | RC6 | Sin `indicador_iva`: deriva el `indicador_iva_default` del proveedor y pide confirmación | Confirmación + derivado |
@@ -78,9 +78,9 @@ Un cambio en las reglas de negocio toca `src/domain/reglas.ts` y `src/knowledge/
 | RC9 | Fecha de aprobación (día) ≥ `fecha_solicitud`, si no: confirmación | Confirmación |
 | RC10 | `|cantidad × valor_unitario − valor_total| ≤ 1` | Bloqueo |
 
-Resultado sobre los fixtures (`npm run demo`): sol-001 crea la OC sin intervención, sol-002 se bloquea por RC1, sol-003 por RC2, sol-004 pide confirmación por RC5 (6 %), sol-005 por RC8 (retroactiva) y sol-006 por RC6 (IVA derivado), con condiciones de pago derivadas por RC7.
+Resultado sobre los fixtures (`npm run demo`): sol-001 crea la OC sin intervención, sol-002 se bloquea por RC1, sol-003 por RC2 y RC3, sol-004 pide confirmación por RC5 (6 %), sol-005 por RC8 (retroactiva) y sol-006 por RC6 (IVA derivado), con condiciones de pago derivadas por RC7.
 
-**La más difícil: RC1.** Hay que leer el NIT de dos fuentes con formatos distintos (`900555111` frente a `900.555.111-2`, con dígito de verificación) y, si no viene (sol-006), caer al nombre normalizado sin generar falsos positivos. La segunda en dificultad fue RC2: sol-003 trae un "Aprobado" legítimo de un líder real, pero de otro centro de costo, y el texto del cuerpo ("aprobado desde comercial…") tienta a aceptarlo. Por eso la regla compara el remitente contra el maestro y no interpreta el texto.
+**La más difícil: RC1.** Hay que leer el NIT de dos fuentes con formatos distintos (`900555111` frente a `900.555.111-2`, con dígito de verificación) y, si no viene (sol-006), caer al nombre normalizado sin generar falsos positivos. La segunda en dificultad fue RC2: sol-003 trae un "Aprobado" legítimo de un líder real, pero de otro centro de costo, y el texto del cuerpo ("aprobado desde comercial…") tienta a aceptarlo. Por eso la regla compara el remitente contra el maestro y no interpreta el texto. Y es una trampa doble: aunque aprobara rtorres, el aprobador correcto de CC-2020, su tope (30 M) no cubre los 74 M, así que sol-003 se bloquea por RC2 **y** RC3 y ambas aparecen en `bloqueos[]`.
 
 ## 6. Diseño del adaptador SAP real
 
