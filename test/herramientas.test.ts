@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync, cpSync } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { catalogo, confirmaEnSuMensaje, construir_payload, crear, generar_evidencia, leer_paquete, validar } from '../src/tools/oc.ts';
 import { contextoDePrueba, salidaTemporal } from './apoyo.ts';
 
@@ -114,9 +114,32 @@ describe('oc_crear', () => {
   });
 });
 
+describe('errores inesperados de las herramientas', () => {
+  it('se devuelven como { ok: false } y quedan registrados en el servidor', async () => {
+    const registro = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const archivo = path.join(salidaTemporal(), 'no-es-carpeta');
+    writeFileSync(archivo, 'x');
+    const r = await json(construir_payload.execute({ caso: 'sol-001' }, contextoDePrueba({ salida: archivo })));
+    expect(r).toMatchObject({ ok: false, error: expect.stringMatching(/Error interno en oc_construir_payload/) });
+    expect(registro).toHaveBeenCalledWith(expect.stringContaining('"contexto":"oc_construir_payload"'));
+    registro.mockRestore();
+  });
+
+  it('un error esperado de datos no se registra como fallo', async () => {
+    const registro = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await leer_paquete.execute({ caso: 'no-existe' }, contextoDePrueba());
+    expect(registro).not.toHaveBeenCalled();
+    registro.mockRestore();
+  });
+});
+
 describe('detección de confirmación humana', () => {
   it.each([
     ['Confirmo', true],
+    ['sí', true],
+    ['Sí', true],
+    ['sí.', true],
+    ['así no', false],
     ['sí, procede', true],
     ['ok, adelante', true],
     ['no confirmo', false],

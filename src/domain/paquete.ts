@@ -6,7 +6,7 @@ export const casoSchema = z
   .describe('Nombre de la carpeta del caso en fixtures/reto-03/solicitudes/, p. ej. sol-001');
 
 export const solicitudSchema = z.object({
-  solicitud_id: z.string(),
+  solicitud_id: z.string().regex(/^[\w-]{1,40}$/, 'solo letras, números, guion y guion bajo (máx. 40)'),
   solicitante: z.string(),
   proveedor_nombre: z.string(),
   proveedor_nit: z.string().optional(),

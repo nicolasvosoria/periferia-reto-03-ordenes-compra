@@ -5,6 +5,7 @@ import { normalizarMaestros, type Maestros } from '../domain/maestros.ts';
 import { normalizarPaquete, type Paquete, type Resultado } from '../domain/paquete.ts';
 import { construirOrden, ordenCompraSchema, textoEvidencia, type OrdenCompra, type Trazabilidad } from '../domain/payload.ts';
 import { validarPaquete, type Validacion } from '../domain/reglas.ts';
+import { ErrorDeDatos } from '../infra/errores.ts';
 import { leerMaestros } from '../infra/fixtures.ts';
 import { referenciaArgs, resolverOrigen, type OrigenPaquete } from '../infra/origen.ts';
 import { pdfDeTexto } from '../infra/pdf.ts';
@@ -39,9 +40,11 @@ function herramienta<A extends z.ZodRawShape>(
     description: definicion.description,
     args: definicion.args,
     async execute(args, ctx) {
-      const resultado = await definicion.ejecutar(args, ctx).catch(
-        (error: unknown): Resultado<unknown> => ({ ok: false, error: error instanceof Error ? error.message : String(error) }),
-      );
+      const resultado = await definicion.ejecutar(args, ctx).catch((error: unknown): Resultado<unknown> => {
+        if (error instanceof ErrorDeDatos) return { ok: false, error: error.message };
+        registrarError(`oc_${nombre}`, error);
+        return { ok: false, error: `Error interno en oc_${nombre}: ${error instanceof Error ? error.message : String(error)}` };
+      });
       await registrarLlamada(salidaDe(ctx), {
         ts: new Date().toISOString(),
         sessionId: ctx.sessionId,
@@ -99,8 +102,8 @@ async function guardarTrazabilidad(ctx: ContextoHerramienta, origen: OrigenPaque
   return path.relative(ctx.directory, ruta);
 }
 
-const CONFIRMACION_HUMANA = /\b(confirmo|confirmado|confirmada|s[ií]|apruebo|procede|adelante|dale|ok)\b/i;
-const NEGACION = /\bno\b/i;
+const CONFIRMACION_HUMANA = /(?<![\p{L}\p{N}])(confirmo|confirmado|confirmada|s[ií]|apruebo|procede|adelante|dale|ok)(?![\p{L}\p{N}])/iu;
+const NEGACION = /(?<![\p{L}\p{N}])no(?![\p{L}\p{N}])/iu;
 
 export const confirmaEnSuMensaje = (mensaje: string | undefined) =>
   !!mensaje && CONFIRMACION_HUMANA.test(mensaje) && !NEGACION.test(mensaje);

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { casoSchema, type Resultado } from '../domain/paquete.ts';
 import { leerCaso } from './fixtures.ts';
-import { FORMATO_UPLOAD_ID, leerUpload } from './uploads.ts';
+import { FORMATO_UPLOAD_ID, carpetaSalidaDeUpload, leerUpload } from './uploads.ts';
 
 export const uploadIdSchema = z
   .string()
@@ -36,7 +36,7 @@ export function resolverOrigen(
       ok: true,
       data: {
         etiqueta: `upload:${uploadId}`,
-        carpetaSalida: `upload-${uploadId}`,
+        carpetaSalida: carpetaSalidaDeUpload(uploadId),
         leerArchivos: () => leerUpload(ctx.salida, ctx.sessionId, uploadId),
       },
     };

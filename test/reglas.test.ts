@@ -119,6 +119,12 @@ describe('lectura de documentos', () => {
     expect(r).toMatchObject({ ok: true, data: { cotizacion: null, faltantes: ['cotizacion.txt'] } });
   });
 
+  it('un solicitud_id con caracteres de CSV o fórmula se rechaza', async () => {
+    const archivos = await leerCaso(raiz, 'sol-001');
+    archivos['solicitud.json'] = { ...(archivos['solicitud.json'] as object), solicitud_id: '=HYPERLINK("x"),SOL' };
+    expect(normalizarPaquete(archivos)).toEqual({ ok: false, error: expect.stringMatching(/solicitud_id/) });
+  });
+
   it('un monto no numérico devuelve un error legible', async () => {
     const archivos = await leerCaso(raiz, 'sol-001');
     archivos['solicitud.json'] = { ...(archivos['solicitud.json'] as object), valor_total: 'once millones' };

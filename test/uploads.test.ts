@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { MockLanguageModelV4, convertArrayToReadableStream } from 'ai/test';
 import { describe, expect, it } from 'vitest';
@@ -66,6 +66,40 @@ describe('OrigenPaquete', () => {
   });
 });
 
+describe('ciclo de vida de los uploads', () => {
+  const documentos = () => {
+    const validados = validarArchivosSubidos(archivosDe('sol-001'));
+    if (!validados.ok) throw new Error(validados.error);
+    return validados.data.documentos;
+  };
+
+  it('uploads simultáneos no se pisan ni se borran entre sí', async () => {
+    const salida = salidaTemporal();
+    const ids = await Promise.all(Array.from({ length: 5 }, () => guardarUpload(salida, 's1', documentos())));
+    for (const id of ids) expect(Object.keys(await leerUpload(salida, 's1', id))).toContain('solicitud.json');
+  });
+
+  it('un meta.json corrupto no rompe nuevas cargas y se descarta', async () => {
+    const salida = salidaTemporal();
+    const corrupto = path.join(salida, 'uploads', '11111111-1111-1111-1111-111111111111');
+    mkdirSync(corrupto, { recursive: true });
+    writeFileSync(path.join(corrupto, 'meta.json'), '{ trunc');
+    const id = await guardarUpload(salida, 's1', documentos());
+    expect(Object.keys(await leerUpload(salida, 's1', id))).toContain('correo.json');
+    expect(existsSync(corrupto)).toBe(false);
+  });
+
+  it('al vencer se borran el upload y su carpeta de salida', async () => {
+    const salida = salidaTemporal();
+    const ahora = Date.now();
+    const viejo = await guardarUpload(salida, 's1', documentos(), ahora - TTL_UPLOAD_MS - 1);
+    mkdirSync(path.join(salida, `upload-${viejo}`), { recursive: true });
+    await guardarUpload(salida, 's1', documentos(), ahora);
+    expect(existsSync(path.join(salida, 'uploads', viejo))).toBe(false);
+    expect(existsSync(path.join(salida, `upload-${viejo}`))).toBe(false);
+  });
+});
+
 describe('las herramientas dan lo mismo con upload que con el caso de fixtures', () => {
   it.each(['sol-001', 'sol-002', 'sol-003', 'sol-004', 'sol-005', 'sol-006'])('%s', async (caso) => {
     const ctx = contextoDePrueba();
@@ -129,7 +163,9 @@ describe('POST /api/uploads', () => {
   });
 
   it('rechaza un sessionId inválido', async () => {
-    expect((await subir(appDePrueba(), formulario('../x', archivosDe('sol-001')))).status).toBe(400);
+    const respuesta = await subir(appDePrueba(), formulario('../x', archivosDe('sol-001')));
+    expect(respuesta.status).toBe(400);
+    expect(await respuesta.json()).toEqual({ ok: false, error: 'sessionId inválido' });
   });
 
   it('con el flag apagado no expone la carga y la config lo informa', async () => {

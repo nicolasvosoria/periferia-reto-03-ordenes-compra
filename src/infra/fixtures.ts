@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { casoSchema } from '../domain/paquete.ts';
+import { ErrorDeDatos } from './errores.ts';
 
 const RAIZ_FIXTURES = path.join('fixtures', 'reto-03');
 
@@ -11,7 +12,7 @@ async function leerArchivo(ruta: string): Promise<unknown> {
   try {
     return JSON.parse(contenido);
   } catch (causa) {
-    throw new Error(`JSON malformado en ${path.basename(ruta)}`, { cause: causa });
+    throw new ErrorDeDatos(`JSON malformado en ${path.basename(ruta)}`, { cause: causa });
   }
 }
 
@@ -32,8 +33,8 @@ export async function listarCasos(directorio: string): Promise<string[]> {
 }
 
 export async function leerCaso(directorio: string, caso: string): Promise<Record<string, unknown>> {
-  if (!casoSchema.safeParse(caso).success) throw new Error(`Nombre de caso inválido: ${caso}`);
+  if (!casoSchema.safeParse(caso).success) throw new ErrorDeDatos(`Nombre de caso inválido: ${caso}`);
   const dir = path.join(directorio, RAIZ_FIXTURES, 'solicitudes', caso);
-  if (!existsSync(dir)) throw new Error(`No existe el caso ${caso}`);
+  if (!existsSync(dir)) throw new ErrorDeDatos(`No existe el caso ${caso}`);
   return leerCarpetaDocumentos(dir);
 }

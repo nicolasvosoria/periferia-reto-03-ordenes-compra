@@ -134,7 +134,7 @@ La decisión de tolerarlas o rechazarlas es de la dirección (PRD, sección 10).
 
 ## 9. Supuestos
 
-- `caso` es el nombre de la carpeta (`sol-001`) y `solicitud_id` es el id de negocio (`SOL-2026-001`). La idempotencia de SAP se hace por `solicitud_id`.
+- `caso` es el nombre de la carpeta (`sol-001`) y `solicitud_id` es el id de negocio (`SOL-2026-001`). La idempotencia de SAP se hace por `solicitud_id`. Es global a propósito: una misma solicitud de la empresa debe tener una sola OC, venga de fixtures o de documentos adjuntos, y en cualquier sesión. Por eso un upload que repite `SOL-2026-001` recibe la OC ya creada como idempotente. `solicitud_id` se restringe a letras, números, guion y guion bajo para que no pueda romper `control.csv` ni inyectar fórmulas.
 - "Aprobado" se busca como palabra completa, sin distinguir mayúsculas. No se interpreta el resto del cuerpo.
 - RC9 y RC8 comparan fechas por día (sin hora ni zona horaria).
 - El NIT se compara sin el dígito de verificación. El nombre normalizado ignora tildes, mayúsculas, espacios y puntuación.

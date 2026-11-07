@@ -37,10 +37,10 @@ export function App() {
       .catch(() => setUploadsHabilitados(false));
   }, []);
 
-  async function enviar(texto: string) {
+  async function enviar(texto: string): Promise<boolean> {
     if (adjuntos.length === 0) {
       void sendMessage({ text: texto });
-      return;
+      return true;
     }
     setSubiendo(true);
     setErrorAdjuntos(null);
@@ -52,13 +52,15 @@ export function App() {
       const r = (await respuesta.json()) as { ok: boolean; error?: string; uploadId?: string; faltantes?: string[] };
       if (!r.ok || !r.uploadId) {
         setErrorAdjuntos(r.error ?? 'No se pudieron cargar los documentos');
-        return;
+        return false;
       }
       setAdjuntos([]);
       const pedido = texto || 'Procesa los documentos adjuntos';
       void sendMessage({ text: `${pedido} (uploadId: ${r.uploadId})` });
+      return true;
     } catch {
       setErrorAdjuntos('No se pudieron cargar los documentos. Intenta de nuevo.');
+      return false;
     } finally {
       setSubiendo(false);
     }
@@ -128,8 +130,7 @@ export function App() {
         onSubmit={(e) => {
           e.preventDefault();
           if (!input.trim() && adjuntos.length === 0) return;
-          void enviar(input.trim());
-          setInput('');
+          void enviar(input.trim()).then((enviado) => enviado && setInput(''));
         }}
       >
         {uploadsHabilitados && (
