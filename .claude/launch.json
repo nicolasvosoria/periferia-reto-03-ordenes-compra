@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "prod-local",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "npm run build && npm start"],
+      "port": 3000
+    }
+  ]
+}
