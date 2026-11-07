@@ -16,7 +16,8 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "check": "npm run typecheck && npm run lint && npm test && npm run demo",
-    "probar-llm": "tsx --env-file-if-exists=.env scripts/probar-llm.ts"
+    "probar-llm": "tsx --env-file-if-exists=.env scripts/probar-llm.ts",
+    "modulo": "tsx scripts/generar-modulo.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.86",

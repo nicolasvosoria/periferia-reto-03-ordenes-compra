@@ -65,7 +65,7 @@ describe('manejo de errores', () => {
     const registro = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const respuesta = await postChat(appDePrueba({ adaptador: adaptadorDePrueba(modeloQueFalla) }), { id: 'c1', messages: [mensajeUsuario('hola')] });
     const cuerpo = await respuesta.text();
-    expect(cuerpo).toContain('Ocurrió un error procesando la solicitud');
+    expect(cuerpo).toContain('El modelo de lenguaje no respondió o falló');
     expect(cuerpo).not.toContain('sk-filtrada');
     expect(registro).toHaveBeenCalledWith(expect.stringContaining('"contexto":"agente"'));
   });

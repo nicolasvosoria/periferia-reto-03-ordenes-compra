@@ -23,7 +23,7 @@ export interface DependenciasApp {
   limites?: Partial<LimitesChat>;
 }
 
-const MENSAJE_ERROR_AGENTE = 'Ocurrió un error procesando la solicitud. Intenta de nuevo.';
+const MENSAJE_ERROR_AGENTE = 'El modelo de lenguaje no respondió o falló. Tu conversación sigue activa: intenta de nuevo en un momento.';
 const CONVERSACION_DEMASIADO_LARGA = 'La conversación es demasiado larga. Recarga la página para empezar una nueva.';
 const MINUTO_MS = 60_000;
 const DIA_MS = 24 * 60 * MINUTO_MS;
