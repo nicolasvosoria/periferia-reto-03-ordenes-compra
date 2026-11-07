@@ -1,4 +1,4 @@
-import { Hono, type Context } from 'hono';
+import { Hono, type Context, type ErrorHandler, type Handler, type MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { secureHeaders } from 'hono/secure-headers';
@@ -52,7 +52,64 @@ const politicaSeguridad = secureHeaders({
   xFrameOptions: 'DENY',
 });
 
-const solicitudInvalida = (c: Context, motivo: string) => c.json({ error: `Solicitud inválida: ${motivo}` }, 400);
+export function crearApp({ herramientas, crearModelo, secretoAprobacion, limites }: DependenciasApp) {
+  const secreto = exigirSecretoAprobacion(secretoAprobacion);
+  const config = { ...LIMITES_POR_DEFECTO, ...limites };
+  const app = new Hono();
+
+  app.use('*', politicaSeguridad);
+  app.onError(responderError);
+  app.get('/api/health', (c) => c.json({ ok: true }));
+  app.post(
+    '/api/chat',
+    bodyLimit({ maxSize: config.maxBytes, onError: (c) => c.json({ error: CONVERSACION_DEMASIADO_LARGA }, 413) }),
+    limitarPorIp(config),
+    responderChat({ herramientas, crearModelo, secreto, config }),
+  );
+
+  return app;
+}
+
+const responderError: ErrorHandler = (error, c) => {
+  if (error instanceof HTTPException) return error.getResponse();
+  registrarError('http', error);
+  return c.json({ error: 'Error interno del servidor' }, 500);
+};
+
+function limitarPorIp(config: LimitesChat): MiddlewareHandler {
+  const porIp = crearLimitadorVentana({
+    maximo: config.requestsPorIpPorMinuto,
+    ventanaMs: MINUTO_MS,
+    maxClaves: config.maxIpsRastreadas,
+  });
+  return async (c, siguiente) => {
+    if (porIp.consumir(ipDelCliente(c))) return siguiente();
+    return c.json({ error: 'Demasiadas solicitudes seguidas. Espera un minuto e intenta de nuevo.' }, 429);
+  };
+}
+
+type DependenciasChat = Pick<DependenciasApp, 'herramientas' | 'crearModelo'> & { secreto: string; config: LimitesChat };
+
+function responderChat({ herramientas, crearModelo, secreto, config }: DependenciasChat): Handler {
+  const turnosDiarios = crearLimitadorVentana({ maximo: config.requestsDiarias, ventanaMs: DIA_MS, maxClaves: 1 });
+  return async (c) => {
+    const peticion = await leerPeticionChat(c);
+    if ('invalida' in peticion) return c.json({ error: `Solicitud inválida: ${peticion.invalida}` }, 400);
+    if (peticion.messages.length > config.maxMensajes) return c.json({ error: CONVERSACION_DEMASIADO_LARGA }, 413);
+    if (!turnosDiarios.consumir('global')) {
+      return c.json({ error: 'La demo alcanzó su límite de uso diario. Vuelve a intentarlo mañana.' }, 429);
+    }
+    const resultado = ejecutarAgente({
+      herramientas,
+      modelo: crearModelo(peticion.id),
+      secretoAprobacion: secreto,
+      messages: await convertToModelMessages(peticion.messages),
+    });
+    return createUIMessageStreamResponse({
+      stream: toUIMessageStream({ stream: resultado.stream, onError: () => MENSAJE_ERROR_AGENTE }),
+    });
+  };
+}
 
 async function leerPeticionChat(c: Context): Promise<{ id: string; messages: UIMessage[] } | { invalida: string }> {
   const cuerpo: unknown = await c.req.json().catch(() => undefined);
@@ -64,54 +121,4 @@ async function leerPeticionChat(c: Context): Promise<{ id: string; messages: UIM
     return { invalida: 'solo se aceptan mensajes de usuario y asistente' };
   }
   return { id: peticion.data.id, messages: mensajes.data };
-}
-
-export function crearApp({ herramientas, crearModelo, secretoAprobacion, limites }: DependenciasApp) {
-  const secreto = exigirSecretoAprobacion(secretoAprobacion);
-  const config = { ...LIMITES_POR_DEFECTO, ...limites };
-  const porIp = crearLimitadorVentana({
-    maximo: config.requestsPorIpPorMinuto,
-    ventanaMs: MINUTO_MS,
-    maxClaves: config.maxIpsRastreadas,
-  });
-  const presupuestoDiario = crearLimitadorVentana({ maximo: config.requestsDiarias, ventanaMs: DIA_MS, maxClaves: 1 });
-  const app = new Hono();
-
-  app.use('*', politicaSeguridad);
-
-  app.onError((error, c) => {
-    if (error instanceof HTTPException) return error.getResponse();
-    registrarError('http', error);
-    return c.json({ error: 'Error interno del servidor' }, 500);
-  });
-
-  app.get('/api/health', (c) => c.json({ ok: true }));
-
-  app.post(
-    '/api/chat',
-    bodyLimit({ maxSize: config.maxBytes, onError: (c) => c.json({ error: CONVERSACION_DEMASIADO_LARGA }, 413) }),
-    async (c, siguiente) => {
-      if (porIp.consumir(ipDelCliente(c))) return siguiente();
-      return c.json({ error: 'Demasiadas solicitudes seguidas. Espera un minuto e intenta de nuevo.' }, 429);
-    },
-    async (c) => {
-      const peticion = await leerPeticionChat(c);
-      if ('invalida' in peticion) return solicitudInvalida(c, peticion.invalida);
-      if (peticion.messages.length > config.maxMensajes) return c.json({ error: CONVERSACION_DEMASIADO_LARGA }, 413);
-      if (!presupuestoDiario.consumir('global')) {
-        return c.json({ error: 'La demo alcanzó su límite de uso diario. Vuelve a intentarlo mañana.' }, 429);
-      }
-      const resultado = ejecutarAgente({
-        herramientas,
-        modelo: crearModelo(peticion.id),
-        secretoAprobacion: secreto,
-        messages: await convertToModelMessages(peticion.messages),
-      });
-      return createUIMessageStreamResponse({
-        stream: toUIMessageStream({ stream: resultado.stream, onError: () => MENSAJE_ERROR_AGENTE }),
-      });
-    },
-  );
-
-  return app;
 }

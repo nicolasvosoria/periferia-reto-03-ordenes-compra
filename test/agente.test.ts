@@ -4,13 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { ejecutarAgente, exigirSecretoAprobacion } from '../src/agent/agente.ts';
 import { SapEnMemoria } from '../src/infra/sap-memoria.ts';
 import { crearHerramientas } from '../src/tools/oc.ts';
-
-const SECRETO = 'x'.repeat(48);
-
-const usoVacio = {
-  inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
-  outputTokens: { total: 1, text: 1, reasoning: undefined },
-};
+import { SECRETO_DE_PRUEBA as SECRETO, modeloQueResponde, usoVacio } from './apoyo.ts';
 
 const ordenSolOk = {
   solicitudId: 'sol-ok',
@@ -26,19 +20,6 @@ const modeloQueLlamaCrearOrden = () =>
         { type: 'stream-start', warnings: [] },
         { type: 'tool-call', toolCallId: 'call-1', toolName: 'crear_orden_compra', input: JSON.stringify(ordenSolOk) },
         { type: 'finish', finishReason: { unified: 'tool-calls', raw: undefined }, usage: usoVacio },
-      ]),
-    },
-  });
-
-const modeloQueResponde = () =>
-  new MockLanguageModelV4({
-    doStream: {
-      stream: convertArrayToReadableStream([
-        { type: 'stream-start', warnings: [] },
-        { type: 'text-start', id: 't1' },
-        { type: 'text-delta', id: 't1', delta: 'Listo' },
-        { type: 'text-end', id: 't1' },
-        { type: 'finish', finishReason: { unified: 'stop', raw: undefined }, usage: usoVacio },
       ]),
     },
   });

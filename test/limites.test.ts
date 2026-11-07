@@ -1,44 +1,8 @@
-import { MockLanguageModelV4, convertArrayToReadableStream } from 'ai/test';
 import { describe, expect, it } from 'vitest';
-import { SapEnMemoria } from '../src/infra/sap-memoria.ts';
-import { crearApp } from '../src/server/app.ts';
 import { crearLimitadorVentana, type LimitesChat } from '../src/server/limites.ts';
-import { crearHerramientas } from '../src/tools/oc.ts';
+import { appDePrueba, mensajeUsuario as mensaje, postChat } from './apoyo.ts';
 
-const usoVacio = {
-  inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
-  outputTokens: { total: 1, text: 1, reasoning: undefined },
-};
-
-const modeloQueResponde = () =>
-  new MockLanguageModelV4({
-    doStream: {
-      stream: convertArrayToReadableStream([
-        { type: 'stream-start', warnings: [] },
-        { type: 'text-start', id: 't1' },
-        { type: 'text-delta', id: 't1', delta: 'Hola' },
-        { type: 'text-end', id: 't1' },
-        { type: 'finish', finishReason: { unified: 'stop', raw: undefined }, usage: usoVacio },
-      ]),
-    },
-  });
-
-const app = (limites: Partial<LimitesChat>) =>
-  crearApp({
-    herramientas: crearHerramientas(new SapEnMemoria()),
-    crearModelo: modeloQueResponde,
-    secretoAprobacion: 'x'.repeat(48),
-    limites,
-  });
-
-const mensaje = (texto: string) => ({ id: crypto.randomUUID(), role: 'user', parts: [{ type: 'text', text: texto }] });
-
-const postChat = (aplicacion: ReturnType<typeof app>, cuerpo: unknown, cabeceras: Record<string, string> = {}) =>
-  aplicacion.request('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...cabeceras },
-    body: JSON.stringify(cuerpo),
-  });
+const app = (limites: Partial<LimitesChat>) => appDePrueba({ limites });
 
 const conversacion = { id: 'c1', messages: [mensaje('hola')] };
 

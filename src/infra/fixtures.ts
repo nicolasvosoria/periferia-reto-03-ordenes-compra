@@ -3,7 +3,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { solicitudIdSchema, type Expediente } from '../domain/expediente.ts';
 
-export const fixturesDir = (): string =>
+const fixturesDir = (): string =>
   path.resolve(process.env.FIXTURES_DIR ?? 'fixtures/reto-03');
 
 async function leerArchivo(ruta: string): Promise<unknown> {
