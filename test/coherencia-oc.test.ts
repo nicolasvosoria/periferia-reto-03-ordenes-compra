@@ -72,6 +72,11 @@ describe('coherencia de la OC con el expediente', () => {
     ]);
   });
 
+  it('un maestro de proveedores ilegible se reporta como tal, no como proveedor inexistente', () => {
+    const resultado = verificarCoherenciaOC(orden(), { expediente: expediente({ proveedor: 'P001' }), maestros: {} });
+    expect(resultado).toEqual([expect.stringMatching(/maestro proveedores.json no tiene el formato esperado/)]);
+  });
+
   it('no inventa reglas para campos que la solicitud no declara', () => {
     expect(verificar(orden({ centroCosto: 'CUALQUIERA' }), { proveedor: 'P001' })).toEqual([]);
   });

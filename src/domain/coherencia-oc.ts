@@ -13,11 +13,6 @@ const solicitudDeclarada = z.object({
 
 const identifica = (p: ProveedorMaestro, referencia: string) => p.codigo === referencia || p.nit === referencia;
 
-function proveedoresDelMaestro(maestros: Record<string, unknown>): ProveedorMaestro[] {
-  const lista = z.array(proveedorMaestro).safeParse(maestros['proveedores.json']);
-  return lista.success ? lista.data : [];
-}
-
 function incoherenciasDeProveedor(referencia: string, maestro: ProveedorMaestro[], declarado?: string): string[] {
   const proveedor = maestro.find((p) => identifica(p, referencia));
   if (!proveedor) return [`El proveedor ${referencia} no existe en el maestro de proveedores`];
@@ -39,8 +34,10 @@ function incoherenciasDeProveedor(referencia: string, maestro: ProveedorMaestro[
 export function verificarCoherenciaOC(orden: OrdenCompraInput, { expediente, maestros }: ContextoSolicitud): string[] {
   const parseada = solicitudDeclarada.safeParse(expediente.archivos['solicitud.json']);
   if (!parseada.success) return ['solicitud.json no tiene el formato esperado; no se puede contrastar la OC'];
+  const maestro = z.array(proveedorMaestro).safeParse(maestros['proveedores.json']);
+  if (!maestro.success) return ['El maestro proveedores.json no tiene el formato esperado; no se puede contrastar la OC'];
   const declarada = parseada.data;
-  const problemas = incoherenciasDeProveedor(orden.proveedor, proveedoresDelMaestro(maestros), declarada.proveedor);
+  const problemas = incoherenciasDeProveedor(orden.proveedor, maestro.data, declarada.proveedor);
   if (declarada.centroCosto && declarada.centroCosto !== orden.centroCosto) {
     problemas.push(`El centro de costo ${orden.centroCosto} no coincide con el de la solicitud (${declarada.centroCosto})`);
   }

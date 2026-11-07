@@ -38,11 +38,6 @@ export interface PeticionAgente {
   messages: ModelMessage[];
 }
 
-/**
- * Ciclo del agente: el modelo propone una llamada a herramienta, el SDK la ejecuta
- * (o se detiene a pedir aprobación humana firmada) y el resultado vuelve al modelo,
- * hasta responder en texto o llegar al tope de pasos.
- */
 export function ejecutarAgente({ herramientas, modelo, secretoAprobacion, messages }: PeticionAgente) {
   const secreto = exigirSecretoAprobacion(secretoAprobacion);
   const aprobaciones = Object.fromEntries(

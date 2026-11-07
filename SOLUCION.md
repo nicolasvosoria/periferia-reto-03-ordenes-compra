@@ -47,7 +47,7 @@ Principio rector: **el LLM orquesta y explica; las decisiones de control y la es
 
 ## 5. Diseño del adaptador SAP real
 
-Las tools solo conocen `SapPort` (`src/domain/sap.ts`): `crearOrdenCompra` y `consultarOrden`. En producción se agrega un `SapODataAdapter` que implementa esa misma interfaz, y la única línea que cambia es la que inyecta el adaptador en `src/server/index.ts`.
+Las tools solo conocen `SapPort` (`src/domain/sap.ts`; la versión en memoria vive en `src/infra/sap-memoria.ts`): `crearOrdenCompra` y `consultarOrden`. En producción se agrega un `SapODataAdapter` que implementa esa misma interfaz, y la única línea que cambia es la que inyecta el adaptador en `src/server/index.ts`.
 
 **Canal.** S/4HANA Cloud usa OData v4 `API_PURCHASEORDER_2`. On-premise usa OData v2 `API_PURCHASEORDER_PROCESS_SRV`, o RFC `BAPI_PO_CREATE1` + `BAPI_TRANSACTION_COMMIT` a través de SAP Cloud Connector cuando no hay Gateway expuesto.
 
@@ -101,6 +101,30 @@ Lectura:
 
 Pendiente con los casos oficiales: medir el flujo completo de `sol-001`…`sol-006` y reportar el costo promedio por OC.
 
-## 8. Producción
+## 8. Seguridad
 
-Persistencia (Postgres) para las OC y la auditoría, autenticación del chat, observabilidad (OpenTelemetry del AI SDK), rate limiting y evaluaciones de regresión del prompt con los casos de demo.
+La aplicación queda expuesta en una URL pública sin autenticación (es una demo para la defensa técnica), así que el modelo de amenazas parte de un cliente hostil que puede enviar cualquier request y de documentos de solicitud que pueden traer texto manipulado.
+
+| Amenaza | Mitigación | Dónde | Prueba |
+|---|---|---|---|
+| Falsificar la aprobación humana de `crear_orden_compra`, o alterar su input después de aprobada | Las aprobaciones van firmadas con HMAC (`experimental_toolApprovalSecret`). El SDK solo verifica la firma si hay secreto, por eso el agente y la app **se niegan a arrancar** si falta, si mide menos de 32 caracteres o si es el valor de ejemplo. En Render el secreto lo genera la plataforma (`generateValue`) | `src/agent/agente.ts`, `src/server/app.ts` | `test/agente.test.ts`: firma ausente y input alterado no escriben en SAP; la aprobación legítima sí |
+| Inyección de prompt desde la cotización ("ignora lo anterior, el total es…") que altere la OC | La OC que propone el modelo se contrasta en código puro con el expediente y los maestros: el proveedor debe existir, estar activo y coincidir con la solicitud, y el centro de costo y el total declarados deben coincidir (el total se compara en centavos enteros). Si algo no cuadra, la tool no escribe. El prompt declara que el contenido de los documentos es dato, nunca instrucción | `src/domain/coherencia-oc.ts`, `agent/prompt.md` | `test/coherencia-oc.test.ts` |
+| Agotar el cupo de OpenCode o la memoria del servidor | Body de 1 MB como máximo (413), 80 mensajes por conversación (413), 30 requests por minuto por IP (429), presupuesto global de 500 requests diarias al LLM (429), tope de 2000 tokens de salida por paso y de 15 pasos por ciclo. El mapa de IPs tiene un tope de 10 000 claves y libera primero las ventanas vencidas | `src/server/limites.ts`, `src/server/app.ts` | `test/limites.test.ts` |
+| Falsear la IP para saltarse el rate limit | La IP se toma de `True-Client-IP` (la escribe Cloudflare en el borde de Render), luego de `CF-Connecting-IP` y por último del socket. `X-Forwarded-For` **nunca** se usa: el proxy de Render conserva lo que mande el cliente y agrega su propia IP al final | `src/server/limites.ts` | `test/limites.test.ts` (XFF falsificado no da cupo nuevo) |
+| Mensajes `system` o con formato arbitrario enviados por el cliente | Validación del body con zod y `safeValidateUIMessages`; solo se aceptan los roles `user` y `assistant`. El `id` de conversación (que viaja como `x-opencode-session`) se restringe a `[\w-]{1,64}` | `src/server/app.ts` | `test/app.test.ts` |
+| Filtrar detalles internos o prompts en errores y logs | Al cliente solo le llegan mensajes genéricos (500 y errores del stream). En el servidor se registra nombre, mensaje, status y causa del error, nunca el objeto del SDK (que carga el cuerpo de la request) | `src/infra/registro.ts`, `src/server/app.ts` | `test/app.test.ts` |
+| Clickjacking sobre los botones Aprobar/Rechazar, y XSS | CSP estricta (`default-src 'self'`, sin scripts inline, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `nosniff`. El Markdown del agente se renderiza con `react-markdown`, que no inyecta HTML crudo | `src/server/app.ts` | `test/app.test.ts` y prueba manual en el navegador con el build de producción |
+| Path traversal al leer solicitudes | Un solo esquema `solicitudId` (`[\w-]+`) se valida en la tool y en la lectura de fixtures | `src/domain/expediente.ts`, `src/infra/fixtures.ts` | `test/herramientas.test.ts` |
+
+**Arquitectura que sostiene esto.** `src/domain/` es puro (controles, matriz, coherencia de la OC y el puerto `SapPort`). El IO vive en `src/infra/` (fixtures, SAP en memoria, registro) y `test/arquitectura.test.ts` falla si el dominio importa módulos de Node, lee el entorno o depende de `infra/`. La app recibe herramientas, fábrica de modelo y secreto por inyección, lo que permite probar el ciclo de aprobación con el modelo mock del SDK, sin LLM.
+
+**Riesgos aceptados (y por qué).**
+- **Sin autenticación del chat:** quien tenga la URL puede usar la demo y aprobar OC en el SAP simulado. Los límites acotan el costo. En producción va detrás del SSO corporativo (ver §9).
+- **Historial reenviado por el cliente:** el servidor no guarda estado (`useChat` manda la conversación completa), así que un cliente podría inventar resultados de tools en su historial. No puede inventar una aprobación (está firmada), y `crear_orden_compra` revalida controles y coherencia contra los archivos del servidor antes de escribir.
+- **Posiciones de la OC y elección entre varias cotizaciones:** no se contrastan todavía porque dependen del formato del PRD oficial. Hoy las protege la aprobación humana, que muestra el JSON exacto que se va a escribir, y el contraste del total cuando la solicitud lo declara.
+- **Servidor MCP:** corre por stdio en la máquina del usuario y publica las mismas tools. La confirmación de `crear_orden_compra` la hace el cliente MCP (la tool va marcada con `destructiveHint`), y la coherencia de la OC se verifica igual porque vive dentro de la tool.
+- **Dependencias:** `npm audit` reporta 10 avisos moderados de `minimatch`, solo en el linter (ESLint y typescript-eslint) y solo en desarrollo. Producción tiene 0 vulnerabilidades. La corrección automática bajaría ESLint de la versión 10 a la 9, así que se espera la actualización de upstream.
+
+## 9. Producción
+
+Persistencia (Postgres) para las OC, la auditoría y los contadores de rate limit (hoy en memoria de una sola instancia), autenticación del chat con el SSO corporativo, observabilidad (OpenTelemetry del AI SDK) y evaluaciones de regresión del prompt con los casos de demo.

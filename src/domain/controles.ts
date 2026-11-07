@@ -1,7 +1,3 @@
-/**
- * Motor de controles: cada control es una regla determinista y auditable.
- * El LLM nunca decide si una solicitud pasa; solo orquesta y explica.
- */
 export type Severidad = 'bloqueante' | 'requiere_confirmacion' | 'informativo';
 
 export interface ResultadoControl {

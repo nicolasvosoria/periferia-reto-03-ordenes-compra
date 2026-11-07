@@ -8,11 +8,6 @@ export interface ContextoSolicitud {
 
 const DOCUMENTOS_REQUERIDOS = ['correo.json', 'solicitud.json', 'cotizacion.txt', 'aprobacion.json'];
 
-/**
- * Matriz de controles del Reto 3. Solo incluye lo que ya se sabe por el
- * instructivo; el resto (proveedor, topes, IVA, condición de pago, retroactivas)
- * se agrega desde el PRD.
- */
 export const matrizControles: readonly Control<ContextoSolicitud>[] = [
   {
     id: 'C01-documentos',

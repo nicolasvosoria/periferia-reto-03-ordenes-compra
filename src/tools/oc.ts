@@ -6,16 +6,10 @@ import { matrizControles, type ContextoSolicitud } from '../domain/matriz-contro
 import type { SapPort } from '../domain/sap.ts';
 import { leerMaestros, leerSolicitud, listarSolicitudes } from '../infra/fixtures.ts';
 
-/**
- * Catálogo único de herramientas. El agente (AI SDK), el servidor MCP y demo.ts
- * consumen esta misma tabla, así que la lógica se prueba sin LLM.
- */
 export interface Herramienta<S extends z.ZodObject = z.ZodObject, O = unknown> {
   descripcion: string;
   entrada: S;
-  /** Si es true, el agente debe obtener confirmación humana antes de ejecutarla. */
   requiereAprobacion?: boolean;
-  // Firma de método (bivariante) para poder tratar el catálogo como Herramienta genérica.
   ejecutar(input: z.infer<S>): Promise<O>;
 }
 
@@ -98,5 +92,4 @@ export function crearHerramientas(sap: SapPort) {
 
 export type Herramientas = ReturnType<typeof crearHerramientas>;
 
-/** Vista genérica del catálogo para los adaptadores (AI SDK, MCP). */
 export const catalogo = (h: Herramientas): [string, Herramienta][] => Object.entries(h);

@@ -1,7 +1,3 @@
-/**
- * Puerto SAP. El agente solo conoce esta interfaz; en producción se implementa
- * con OData (API_PURCHASEORDER_PROCESS_SRV) o BAPI_PO_CREATE1 sin tocar las tools.
- */
 export interface PosicionOC {
   descripcion: string;
   cantidad: number;

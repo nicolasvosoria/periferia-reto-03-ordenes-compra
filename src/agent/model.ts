@@ -1,6 +1,5 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 
-/** Endpoints OpenAI-compatible del gateway OpenCode. Ambos traducen a cualquier modelo de su catálogo. */
 export const OPENCODE_BASE_URLS = {
   go: 'https://opencode.ai/inference/go/openai/v1',
   zen: 'https://opencode.ai/inference/openai/v1',

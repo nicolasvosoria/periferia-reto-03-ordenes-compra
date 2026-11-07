@@ -1,8 +1,3 @@
-/**
- * Prueba de humo contra el gateway OpenCode: el modelo debe llamar las herramientas
- * reales y reportar el veredicto de una solicitud. Sirve también para comparar modelos.
- *   npm run probar-llm -- glm-5.3 kimi-k3
- */
 import { randomUUID } from 'node:crypto';
 import { generateText, isStepCount } from 'ai';
 import { aToolsAiSdk } from '../src/agent/agente.ts';

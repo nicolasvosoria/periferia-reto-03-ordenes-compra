@@ -1,8 +1,3 @@
-/**
- * Verificación determinista: procesa todas las solicitudes llamando directamente
- * a las herramientas, sin consumir ningún modelo de lenguaje.
- *   npm run demo
- */
 import { SapEnMemoria } from './src/infra/sap-memoria.ts';
 import { crearHerramientas } from './src/tools/oc.ts';
 
