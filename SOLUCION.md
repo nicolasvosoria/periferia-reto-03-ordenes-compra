@@ -44,9 +44,22 @@ Un cambio en las reglas de negocio toca `src/domain/reglas.ts` y `src/knowledge/
 
 ## 4. Elección del modelo
 
-- **Proveedor:** gateway OpenCode (endpoint OpenAI-compatible, suscripción Go). **Modelo:** `glm-5.3`.
-- **Por qué:** en la comparación de 5 modelos del catálogo (glm-5.3, glm-5.3-flash, kimi-k3, qwen3.8-flash, deepseek-v4.1-flash), todos acertaron el veredicto. glm-5.3 tuvo la menor latencia (~3,4 s por llamada) y buena redacción en español. Como las reglas son código determinista, el modelo solo orquesta y explica: un modelo mediano basta. Cambiarlo es cambiar la variable `MODEL`; cambiar de proveedor es escribir otro `AdaptadorLLM` sin tocar el ciclo.
-- **Costo por caso:** un caso completo usa de 4 a 6 pasos. Cada paso reenvía prompt, conocimiento, definiciones de herramientas e historial: unos 4 000 a 8 000 tokens de entrada (la mayoría prefijo estable que el proveedor cachea) y unos cientos de salida. En total son unos 30 000 a 45 000 tokens de entrada por caso. Con la suscripción Go se descuenta del cupo; a precio de lista equivale a centavos de dólar por caso (una llamada corta marcó US$0,0009 en `usage.opencode.list_cost`). `npm run probar-llm -- <modelos…>` repite la medición por modelo.
+- **Proveedor:** gateway OpenCode (endpoint OpenAI-compatible, suscripción Go). **Modelo:** `deepseek-v4.1-flash`.
+- **Por qué:** comparé 8 modelos del catálogo con el mismo prompt real (system prompt + conocimiento, ~1 400 tokens de entrada) y con el flujo de herramientas. El costo de lista por llamada salió de `usage.opencode.list_cost`:
+
+  | Modelo | Costo por llamada | Herramientas (sol-005) |
+  |---|---|---|
+  | kimi-k3 | US$0,0114 | — |
+  | glm-5.3 (modelo inicial) | US$0,0039 | ✔ |
+  | deepseek-v4-pro | US$0,0018 | ✔ |
+  | qwen3.8-flash | US$0,0004 | ✔ |
+  | **deepseek-v4.1-flash** | **US$0,00035** | ✔ |
+  | minimax-m3.1-flash | US$0,00033 | ✔ |
+  | mimo-v2.6-flash | US$0,00026 | ✔ |
+  | glm-5.3-flash | US$0,00025 | ✔ |
+
+  deepseek-v4.1-flash es unas **11 veces más barato que glm-5.3**. Además completó el flujo exigente de punta a punta: con sol-004 mostró la OC, cerró el turno pidiendo confirmación, no creó nada antes de tiempo y creó la OC después de "confirmo". Frente a los aún más baratos (glm-5.3-flash, mimo), razona antes de responder, lo que da explicaciones más completas de las excepciones por una diferencia de centésimas de centavo. Como las reglas son código determinista, el modelo solo orquesta y explica, así que un modelo pequeño basta. Cambiarlo es cambiar la variable `MODEL`; cambiar de proveedor es escribir otro `AdaptadorLLM` sin tocar el ciclo.
+- **Costo por caso:** un caso completo usa de 4 a 6 pasos. Cada paso reenvía prompt, conocimiento, definiciones de herramientas e historial: unos 4 000 a 8 000 tokens de entrada (la mayoría prefijo estable que el proveedor cachea) y unos cientos de salida. En total son unos 30 000 a 45 000 tokens de entrada por caso. Con deepseek-v4.1-flash, un caso completo cuesta del orden de US$0,002 a US$0,004 a precio de lista (frente a unos US$0,02 a US$0,03 con glm-5.3). Con la suscripción Go se descuenta del cupo. `npm run probar-llm -- <modelos…>` repite la medición por modelo.
 
 ## 5. Matriz de controles
 

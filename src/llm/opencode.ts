@@ -13,7 +13,7 @@ export interface ConfigOpenCode {
 export function leerConfigOpenCode(env: NodeJS.ProcessEnv = process.env): ConfigOpenCode {
   const apiKey = env.OPENCODE_API_KEY;
   if (!apiKey) throw new Error('Falta OPENCODE_API_KEY (ver .env.example)');
-  return { apiKey, baseURL: env.OPENCODE_BASE_URL ?? URL_OPENCODE_GO, modelo: env.MODEL ?? 'glm-5.3' };
+  return { apiKey, baseURL: env.OPENCODE_BASE_URL ?? URL_OPENCODE_GO, modelo: env.MODEL ?? 'deepseek-v4.1-flash' };
 }
 
 /**

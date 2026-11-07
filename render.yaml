@@ -8,4 +8,4 @@ services:
       - key: OPENCODE_API_KEY
         sync: false
       - key: MODEL
-        value: glm-5.3
+        value: deepseek-v4.1-flash
