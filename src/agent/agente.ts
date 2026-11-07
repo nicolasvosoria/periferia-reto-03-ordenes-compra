@@ -4,6 +4,9 @@ import { z } from 'zod';
 import { registrarError } from '../infra/registro.ts';
 import { catalogo, type ContextoHerramienta } from '../tools/oc.ts';
 
+const TIMEOUT_PASO_MS = 90_000;
+const TIMEOUT_PRIMER_FRAGMENTO_MS = 45_000;
+
 const leer = (ruta: string) => readFileSync(new URL(ruta, import.meta.url), 'utf8');
 
 const instrucciones = [
@@ -39,6 +42,7 @@ export function ejecutarAgente({ modelo, messages, ctx, maxPasos, maxTokensSalid
     stopWhen: isStepCount(maxPasos),
     prepareStep: ({ stepNumber }) => (stepNumber >= maxPasos - 1 ? { toolChoice: 'none' } : undefined),
     maxOutputTokens: maxTokensSalida,
+    timeout: { stepMs: TIMEOUT_PASO_MS, firstChunkMs: TIMEOUT_PRIMER_FRAGMENTO_MS },
     onError: ({ error }) => registrarError('agente', error),
     onFinish: ({ totalUsage }) => alTerminar?.(totalUsage),
   });
