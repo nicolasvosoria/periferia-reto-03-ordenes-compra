@@ -35,7 +35,7 @@ npm run demo     # procesa los 6 casos, sol-001 dos veces (idempotencia) y confi
 npm run check    # typecheck + lint (cero warnings) + tests + demo
 ```
 
-`demo.ts` limpia `out/` al inicio y deja `out/control.csv`, `out/log.jsonl`, `out/sap/ordenes.jsonl` y, por caso, `out/<caso>/aprobacion.txt` y `out/<caso>/trazabilidad.json`.
+`demo.ts` limpia `out/` al inicio y deja `out/control.csv`, `out/log.jsonl`, `out/sap/ordenes.jsonl` y, por caso, `out/<caso>/aprobacion.txt`, `out/<caso>/aprobacion.pdf` y `out/<caso>/trazabilidad.json`.
 
 Prompt de ejemplo en el chat: *Procesa la solicitud "sol-004". Muéstrame la OC como quedaría en SAP, qué validaciones pasó y cuáles no, y no la crees hasta que yo lo confirme.* Después responde «confirmo».
 
@@ -46,6 +46,8 @@ Prompt de ejemplo en el chat: *Procesa la solicitud "sol-004". Muéstrame la OC 
 | `POST` | `/api/chat` | `{ id, messages }` (formato UI message del AI SDK) → stream de eventos: texto, llamadas a herramientas y resultados. `id` es el `sessionId` |
 | `GET` | `/api/sessions/:id` | Historial de la sesión y tokens consumidos |
 | `GET` | `/api/health` | `{ ok: true, provider, model }`, sin claves |
+| `GET` | `/api/casos` | Casos disponibles en los fixtures (botones del chat) |
+| `GET` | `/api/control` | Resumen de `out/control.csv`: OC creadas, bloqueadas, pendientes y % de retroactivas |
 
 ## Estructura
 

@@ -104,3 +104,12 @@ describe('endpoints de consulta', () => {
     expect((await segunda.json()).error).toMatch(/tope de tokens/);
   });
 });
+
+describe('panel de control', () => {
+  it('lista los casos y resume el log de control con el % de retroactivas', async () => {
+    const aplicacion = appDePrueba();
+    expect((await (await aplicacion.request('/api/casos')).json()).casos).toHaveLength(6);
+    const vacio = await (await aplicacion.request('/api/control')).json();
+    expect(vacio).toMatchObject({ intentos: 0, porcentajeRetroactivas: 0 });
+  });
+});

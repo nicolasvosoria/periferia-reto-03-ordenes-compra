@@ -6,6 +6,7 @@ import { casoSchema, normalizarPaquete, type Paquete, type Resultado } from '../
 import { construirOrden, ordenCompraSchema, textoEvidencia, type OrdenCompra, type Trazabilidad } from '../domain/payload.ts';
 import { validarPaquete, type Validacion } from '../domain/reglas.ts';
 import { leerCaso, leerMaestros } from '../infra/fixtures.ts';
+import { pdfDeTexto } from '../infra/pdf.ts';
 import { registrarError } from '../infra/registro.ts';
 import { escribirArchivo, registrarControl, registrarLlamada, type FilaControl } from '../infra/salida.ts';
 import { SapMock } from '../sap/mock.ts';
@@ -71,9 +72,12 @@ async function escribirEvidencia(ctx: ContextoHerramienta, caso: string, paquete
   if (!paquete.aprobacion) return null;
   const contenido = textoEvidencia(paquete.aprobacion);
   const sha256 = createHash('sha256').update(contenido).digest('hex');
+  const conHash = `${contenido}\nsha256: ${sha256}\n`;
   const ruta = path.join(salidaDe(ctx), caso, 'aprobacion.txt');
-  await escribirArchivo(ruta, `${contenido}\nsha256: ${sha256}\n`);
-  return { ruta: path.relative(ctx.directory, ruta), sha256 };
+  const rutaPdf = path.join(salidaDe(ctx), caso, 'aprobacion.pdf');
+  await escribirArchivo(ruta, conHash);
+  await escribirArchivo(rutaPdf, await pdfDeTexto(`Evidencia de aprobación — ${caso}`, conHash));
+  return { ruta: path.relative(ctx.directory, ruta), pdf: path.relative(ctx.directory, rutaPdf), sha256 };
 }
 
 async function guardarTrazabilidad(ctx: ContextoHerramienta, caso: string, trazabilidad: Trazabilidad) {
@@ -124,7 +128,7 @@ export const validar = herramienta('validar', {
 });
 
 export const generar_evidencia = herramienta('generar_evidencia', {
-  description: 'Genera out/<caso>/aprobacion.txt con el correo de aprobación (encabezados y cuerpo) y su sha256.',
+  description: 'Genera out/<caso>/aprobacion.txt y aprobacion.pdf con el correo de aprobación (encabezados y cuerpo) y su sha256.',
   args: { caso: casoSchema },
   ejecutar: async ({ caso }, ctx) => {
     const paquete = normalizarPaquete(await leerCaso(ctx.directory, caso));

@@ -73,6 +73,7 @@ describe('payload y evidencia', () => {
     const contenido = readFileSync(path.join(ctx.directory, r.data.ruta), 'utf8');
     expect(contenido).toMatch(/^De: mlopez@periferia-ficticia\.com\nPara: .+\nFecha: .+\nAsunto: .+/);
     expect(contenido).toContain(`sha256: ${r.data.sha256}`);
+    expect(readFileSync(path.join(ctx.directory, r.data.pdf)).subarray(0, 5).toString()).toBe('%PDF-');
   });
 });
 

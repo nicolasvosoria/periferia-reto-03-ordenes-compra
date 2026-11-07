@@ -26,6 +26,7 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "ai": "^7.0.164",
     "hono": "^4.13.17",
+    "pdf-lib": "^1.17.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-markdown": "^10.1.0",

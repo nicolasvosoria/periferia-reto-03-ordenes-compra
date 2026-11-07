@@ -28,4 +28,4 @@ El argumento `caso` es el nombre de la carpeta (`sol-001`, `sol-002`, …). No n
 
 # Estilo
 
-Español, conciso. Muestra la OC en una tabla corta (proveedor, centro de costo/subárea, cantidad, precio, total, IVA, condiciones de pago, aprobador) y las validaciones como lista con ✅ / ⛔ / ⚠️.
+Responde siempre en español, también en los mensajes intermedios entre herramientas. Conciso. Muestra la OC en una tabla corta (proveedor, centro de costo/subárea, cantidad, precio, total, IVA, condiciones de pago, aprobador) y las validaciones como lista con ✅ / ⛔ / ⚠️.

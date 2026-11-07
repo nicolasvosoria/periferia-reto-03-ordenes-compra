@@ -39,3 +39,15 @@ button:disabled { opacity: .5; cursor: default; }
 form { display: flex; gap: 8px; position: sticky; bottom: 0; padding: 12px 0; background: var(--bg); }
 input { flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--fg); }
 .error { color: var(--danger); }
+.casos { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.casos button { background: var(--card); color: var(--fg); border: 1px solid var(--border); padding: 6px 10px; font-family: ui-monospace, monospace; font-size: .85rem; }
+.casos button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.panel-control { margin-bottom: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); padding: 10px 12px; }
+.panel-control summary { cursor: pointer; font-weight: 600; }
+.indicadores { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin: 10px 0; }
+.indicadores div { border: 1px solid var(--border); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; }
+.indicadores strong { font-size: 1.3rem; }
+.indicadores span { color: var(--muted); font-size: .8rem; }
+.indicadores .retro { border-color: var(--warn); background: var(--warn-bg); }
+.ultimas { margin: 0; padding-left: 18px; font-size: .85rem; }
+.marca-retro { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--warn-bg); color: var(--warn); font-size: .75rem; }

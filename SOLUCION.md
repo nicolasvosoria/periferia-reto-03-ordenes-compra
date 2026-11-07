@@ -115,7 +115,7 @@ En los fixtures, sol-005 muestra el patrón completo: la factura (10 de agosto) 
 
 A la dirección le diría:
 
-1. **Primero medir, después decidir.** Desde ya, cada intento queda en `out/control.csv` con `retroactiva`, así que en un mes hay un porcentaje real por centro de costo, proveedor y aprobador, no una percepción.
+1. **Primero medir, después decidir.** Desde ya, cada intento queda en `out/control.csv` con `retroactiva`, y el chat muestra el **% de solicitudes retroactivas** en su panel de control (`GET /api/control`). En un mes hay un porcentaje real por centro de costo, proveedor y aprobador, no una percepción.
 2. **El riesgo no es administrativo, es de control.** Una compra retroactiva salta el presupuesto comprometido y la comparación de cotizaciones, y concentra el poder de decisión en quien compra, no en quien aprueba.
 3. **Cambio de proceso propuesto:** que contabilidad no radique facturas sin OC previa (política "no PO, no pay") con un periodo de transición. Durante ese periodo, las retroactivas se aceptan solo con confirmación explícita y motivo, y se reportan mensualmente a cada líder. Para compras recurrentes de bajo monto (como papelería), se recomienda una OC abierta o marco anual, que elimina la razón práctica del desvío.
 
@@ -152,17 +152,18 @@ La decisión de tolerarlas o rechazarlas es de la dirección (PRD, sección 10).
 | HU-1 Leer el paquete | Hecho | Adjuntos ausentes → `null` + `faltantes`. P1 `oc_leer_excel` no hecho (los fixtures traen JSON) |
 | HU-2 Validar | Hecho | RC1–RC10 con pruebas por caso y por regla |
 | HU-3 Payload | Hecho | Esquema zod de 7.4 y `out/<caso>/trazabilidad.json` por campo |
-| HU-4 Evidencia | Parcial | P0 `aprobacion.txt` con sha256 hecho. P1 PDF no hecho (sería `pdf-lib` sobre el mismo texto) |
+| HU-4 Evidencia | Hecho | P0 `aprobacion.txt` con sha256 y P1 `aprobacion.pdf` (pdf-lib) con el mismo contenido |
 | HU-5 Crear OC | Hecho | Numeración desde 4500000001, idempotencia, `out/control.csv` |
 | HU-6 Errores | Hecho | `{ ok: false, error }` legible: JSON malformado, monto no numérico, caso inexistente |
-| Front (tool calls, confirmación) | Hecho | Resumen y detalle de cada llamada, aviso de confirmación, indicador "pensando" |
+| Front (tool calls, confirmación) | Hecho | Resumen y detalle de cada llamada, aviso de confirmación, indicador "pensando", botones por caso y panel del log de control (OC creadas, bloqueadas, pendientes y % de retroactivas) |
 | `demo.ts` | Hecho | 6 casos, idempotencia de sol-001 y confirmación explícita de sol-004 (y de sol-005) |
 | Bonus `modulo/` | Hecho | Generado desde las mismas fuentes, con un test que impide la divergencia |
 
-Para producción falta: persistencia real (Postgres) para sesiones, control y log; autenticación con el SSO corporativo; el adaptador SAP real; y la evidencia en PDF.
+Para producción falta: persistencia real (Postgres) para sesiones, control y log; autenticación con el SSO corporativo; el adaptador SAP real; y evaluaciones automáticas del agente con el LLM sobre los 6 casos.
 
 ## 11. Uso de IA
 
+- **Dependencias:** `ai` y `@ai-sdk/openai-compatible` (ciclo del agente y proveedor), `hono` (API), `zod` (contratos, obligatorio), `react`, `@ai-sdk/react`, `react-markdown` + `remark-gfm` (chat), `pdf-lib` (evidencia PDF), `@modelcontextprotocol/sdk` (servidor MCP).
 - **Asistente:** Claude Code (Claude Opus 5.5) durante todo el desarrollo.
 - **Para qué:**
   - Andamiaje inicial y lectura del PRD.
@@ -176,7 +177,7 @@ Para producción falta: persistencia real (Postgres) para sesiones, control y lo
   - **IP del cliente desde el último salto de `X-Forwarded-For`** para el rate limit: según reportes de la comunidad de Render, el proxy de Render agrega su IP al final, así que todos caerían en un solo bucket. Se usa `True-Client-IP` (Cloudflare).
   - **Comparar el total de la OC con flotantes:** se reemplazó por la comparación en centavos enteros.
   - **Confiar en el payload que reenvía el modelo:** se reemplazó por recalcularlo en el servidor.
-- **Cómo se verificó:** cada línea se revisó y se probó. Hay 84 tests, typecheck estricto, ESLint con cero warnings, `npm run demo` sobre los 6 casos y la prueba manual del flujo de sol-004 con el modelo real.
+- **Cómo se verificó:** cada línea se revisó y se probó. Hay 90 tests, typecheck estricto, ESLint con cero warnings, `npm run demo` sobre los 6 casos y la prueba manual del flujo de sol-004 con el modelo real.
 
 ## 12. Riesgos de llevarlo a producción
 

@@ -11,7 +11,11 @@ import {
 } from 'ai';
 import { z } from 'zod';
 import { ejecutarAgente } from '../agent/agente.ts';
+import path from 'node:path';
+import { resumirControl } from '../domain/control.ts';
+import { listarCasos } from '../infra/fixtures.ts';
 import { registrarError } from '../infra/registro.ts';
+import { leerControl } from '../infra/salida.ts';
 import type { AdaptadorLLM } from '../llm/adapter.ts';
 import { LIMITES_POR_DEFECTO, crearLimitadorVentana, ipDelCliente, type LimitesChat } from './limites.ts';
 import { crearAlmacenSesiones } from './sesiones.ts';
@@ -60,6 +64,8 @@ export function crearApp({ adaptador, directorio, salida, limites }: Dependencia
   app.use('*', politicaSeguridad);
   app.onError(responderError);
   app.get('/api/health', (c) => c.json({ ok: true, provider: adaptador.proveedor, model: adaptador.modelo }));
+  app.get('/api/casos', async (c) => c.json({ casos: await listarCasos(directorio) }));
+  app.get('/api/control', async (c) => c.json(resumirControl(await leerControl(salida ?? path.join(directorio, 'out')))));
   app.get('/api/sessions/:id', (c) => {
     const sesion = sesiones.consultar(c.req.param('id'));
     return sesion ? c.json({ id: c.req.param('id'), ...sesion }) : c.json({ error: 'Sesión no encontrada' }, 404);
