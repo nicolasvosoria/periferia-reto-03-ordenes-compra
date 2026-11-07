@@ -8,6 +8,7 @@ const app = crearApp({
   adaptador: crearAdaptadorOpenCode(),
   directorio: process.cwd(),
   limites: limitesDesdeEntorno(),
+  uploadsHabilitados: (process.env.UPLOAD_ENABLED ?? (process.env.NODE_ENV === 'production' ? 'false' : 'true')) === 'true',
 });
 app.use('/*', serveStatic({ root: './dist' }));
 

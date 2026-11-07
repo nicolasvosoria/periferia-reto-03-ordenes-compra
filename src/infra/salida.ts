@@ -11,9 +11,10 @@ export interface FilaControl {
   bloqueos: string[];
   confirmaciones: string[];
   ts: string;
+  origen: string;
 }
 
-const COLUMNAS_CONTROL = ['solicitud_id', 'resultado', 'numero_oc', 'retroactiva', 'bloqueos', 'confirmaciones', 'ts'] as const;
+const COLUMNAS_CONTROL = ['solicitud_id', 'resultado', 'numero_oc', 'retroactiva', 'bloqueos', 'confirmaciones', 'ts', 'origen'] as const;
 
 const celdaCsv = (valor: string) => (/[",\n]/.test(valor) ? `"${valor.replace(/"/g, '""')}"` : valor);
 
@@ -38,6 +39,7 @@ export async function registrarControl(salida: string, fila: FilaControl) {
     fila.bloqueos.join('|'),
     fila.confirmaciones.join('|'),
     fila.ts,
+    fila.origen,
   ];
   await agregarLinea(ruta, valores.map(celdaCsv).join(','));
 }

@@ -157,6 +157,7 @@ La decisión de tolerarlas o rechazarlas es de la dirección (PRD, sección 10).
 | HU-6 Errores | Hecho | `{ ok: false, error }` legible: JSON malformado, monto no numérico, caso inexistente |
 | Front (tool calls, confirmación) | Hecho | Resumen y detalle de cada llamada, aviso de confirmación, indicador "pensando", botones por caso y panel del log de control (OC creadas, bloqueadas, pendientes y % de retroactivas) |
 | `demo.ts` | Hecho | 6 casos, idempotencia de sol-001 y confirmación explícita de sol-004 (y de sol-005) |
+| Carga de documentos desde el chat | Hecho (detrás de `UPLOAD_ENABLED`) | `.json`/`.txt` normalizados vía `POST /api/uploads`; `OrigenPaquete` con dos implementaciones (fixtures por `caso`, upload por `uploadId` con alcance de sesión y TTL de 1 h). Mismo `Paquete`, reglas, payload, evidencia y SAP que los fixtures (probado en los 6 casos). El contenido nunca va al prompt: el mensaje solo lleva el `uploadId`. Binarios (.xlsx/.pdf/.eml) quedan como seguimiento |
 | Bonus `modulo/` | Hecho | Generado desde las mismas fuentes, con un test que impide la divergencia |
 
 Para producción falta: persistencia real (Postgres) para sesiones, control y log; autenticación con el SSO corporativo; el adaptador SAP real; y evaluaciones automáticas del agente con el LLM sobre los 6 casos.
@@ -177,7 +178,7 @@ Para producción falta: persistencia real (Postgres) para sesiones, control y lo
   - **IP del cliente desde el último salto de `X-Forwarded-For`** para el rate limit: según reportes de la comunidad de Render, el proxy de Render agrega su IP al final, así que todos caerían en un solo bucket. Se usa `True-Client-IP` (Cloudflare).
   - **Comparar el total de la OC con flotantes:** se reemplazó por la comparación en centavos enteros.
   - **Confiar en el payload que reenvía el modelo:** se reemplazó por recalcularlo en el servidor.
-- **Cómo se verificó:** cada línea se revisó y se probó. Hay 90 tests, typecheck estricto, ESLint con cero warnings, `npm run demo` sobre los 6 casos y la prueba manual del flujo de sol-004 con el modelo real.
+- **Cómo se verificó:** cada línea se revisó y se probó. Hay 128 tests, typecheck estricto, ESLint con cero warnings, `npm run demo` sobre los 6 casos y la prueba manual del flujo de sol-004 con el modelo real.
 
 ## 12. Riesgos de llevarlo a producción
 

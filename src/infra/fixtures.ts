@@ -15,14 +15,14 @@ async function leerArchivo(ruta: string): Promise<unknown> {
   }
 }
 
-async function leerCarpeta(dir: string): Promise<Record<string, unknown>> {
+export async function leerCarpetaDocumentos(dir: string): Promise<Record<string, unknown>> {
   if (!existsSync(dir)) return {};
   const nombres = (await readdir(dir)).filter((n) => !n.startsWith('.')).sort();
   const entradas = await Promise.all(nombres.map(async (n) => [n, await leerArchivo(path.join(dir, n))] as const));
   return Object.fromEntries(entradas);
 }
 
-export const leerMaestros = (directorio: string) => leerCarpeta(path.join(directorio, RAIZ_FIXTURES, 'maestros'));
+export const leerMaestros = (directorio: string) => leerCarpetaDocumentos(path.join(directorio, RAIZ_FIXTURES, 'maestros'));
 
 export async function listarCasos(directorio: string): Promise<string[]> {
   const dir = path.join(directorio, RAIZ_FIXTURES, 'solicitudes');
@@ -35,5 +35,5 @@ export async function leerCaso(directorio: string, caso: string): Promise<Record
   if (!casoSchema.safeParse(caso).success) throw new Error(`Nombre de caso inválido: ${caso}`);
   const dir = path.join(directorio, RAIZ_FIXTURES, 'solicitudes', caso);
   if (!existsSync(dir)) throw new Error(`No existe el caso ${caso}`);
-  return leerCarpeta(dir);
+  return leerCarpetaDocumentos(dir);
 }

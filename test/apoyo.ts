@@ -44,6 +44,7 @@ export const appDePrueba = (dependencias: Partial<DependenciasApp> = {}) =>
     adaptador: adaptadorDePrueba(),
     directorio: process.cwd(),
     salida: salidaTemporal(),
+    uploadsHabilitados: true,
     ...dependencias,
   });
 

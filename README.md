@@ -26,6 +26,7 @@ En modo producción (un solo puerto): `npm run build && npm start` → http://lo
 | `MAX_PASOS` | No | Tope de iteraciones herramienta → modelo por turno (25) |
 | `MAX_TOKENS_SESION` | No | Tope de tokens por conversación (300 000) |
 | `MAX_TURNOS_DIARIOS` | No | Turnos de chat por día para toda la demo (500) |
+| `UPLOAD_ENABLED` | No | Carga de documentos desde el chat (`true`/`false`). Por defecto apagada en producción y encendida en local |
 | `PORT` | No | Puerto del backend (3000) |
 
 ## Verificación sin modelo
@@ -37,6 +38,8 @@ npm run check    # typecheck + lint (cero warnings) + tests + demo
 
 `demo.ts` limpia `out/` al inicio y deja `out/control.csv`, `out/log.jsonl`, `out/sap/ordenes.jsonl` y, por caso, `out/<caso>/aprobacion.txt`, `out/<caso>/aprobacion.pdf` y `out/<caso>/trazabilidad.json`.
 
+**Documentos propios (opcional):** con `UPLOAD_ENABLED`, el botón 📎 del chat adjunta los documentos normalizados. Se suben a `POST /api/uploads` y el mensaje solo lleva el `uploadId`; las herramientas los leen igual que un caso de fixtures (`{ caso }` o `{ uploadId }`, exactamente uno). Cada upload queda ligado a su sesión y vence a la hora.
+
 Prompt de ejemplo en el chat: *Procesa la solicitud "sol-004". Muéstrame la OC como quedaría en SAP, qué validaciones pasó y cuáles no, y no la crees hasta que yo lo confirme.* Después responde «confirmo».
 
 ## API
@@ -46,6 +49,8 @@ Prompt de ejemplo en el chat: *Procesa la solicitud "sol-004". Muéstrame la OC 
 | `POST` | `/api/chat` | `{ id, messages }` (formato UI message del AI SDK) → stream de eventos: texto, llamadas a herramientas y resultados. `id` es el `sessionId` |
 | `GET` | `/api/sessions/:id` | Historial de la sesión y tokens consumidos |
 | `GET` | `/api/health` | `{ ok: true, provider, model }`, sin claves |
+| `POST` | `/api/uploads` | Multipart con `sessionId` y `archivos` (`correo.json`, `solicitud.json`, `cotizacion.txt`, `aprobacion.json`, `factura.txt`; máx. 64 KB c/u, 5 archivos). Responde `{ ok, uploadId, archivos, faltantes }` o `{ ok: false, error }` con HTTP 4xx. Solo con `UPLOAD_ENABLED` |
+| `GET` | `/api/config` | `{ uploads }`: si la carga de documentos está habilitada |
 | `GET` | `/api/casos` | Casos disponibles en los fixtures (botones del chat) |
 | `GET` | `/api/control` | Resumen de `out/control.csv`: OC creadas, bloqueadas, pendientes y % de retroactivas |
 

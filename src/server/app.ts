@@ -13,9 +13,11 @@ import { z } from 'zod';
 import { ejecutarAgente } from '../agent/agente.ts';
 import path from 'node:path';
 import { resumirControl } from '../domain/control.ts';
+import { LIMITES_UPLOAD, validarArchivosSubidos } from '../domain/documentos.ts';
 import { listarCasos } from '../infra/fixtures.ts';
 import { registrarError } from '../infra/registro.ts';
 import { leerControl } from '../infra/salida.ts';
+import { guardarUpload } from '../infra/uploads.ts';
 import type { AdaptadorLLM } from '../llm/adapter.ts';
 import { LIMITES_POR_DEFECTO, crearLimitadorVentana, ipDelCliente, type LimitesChat } from './limites.ts';
 import { crearAlmacenSesiones } from './sesiones.ts';
@@ -25,6 +27,7 @@ export interface DependenciasApp {
   directorio: string;
   salida?: string;
   limites?: Partial<LimitesChat>;
+  uploadsHabilitados?: boolean;
 }
 
 const MENSAJE_ERROR_AGENTE = 'El modelo de lenguaje no respondió o falló. Tu conversación sigue activa: intenta de nuevo en un momento.';
@@ -56,7 +59,7 @@ const politicaSeguridad = secureHeaders({
   xFrameOptions: 'DENY',
 });
 
-export function crearApp({ adaptador, directorio, salida, limites }: DependenciasApp) {
+export function crearApp({ adaptador, directorio, salida, limites, uploadsHabilitados = false }: DependenciasApp) {
   const config = { ...LIMITES_POR_DEFECTO, ...limites };
   const sesiones = crearAlmacenSesiones(config.maxSesiones);
   const app = new Hono();
@@ -64,7 +67,17 @@ export function crearApp({ adaptador, directorio, salida, limites }: Dependencia
   app.use('*', politicaSeguridad);
   app.onError(responderError);
   app.get('/api/health', (c) => c.json({ ok: true, provider: adaptador.proveedor, model: adaptador.modelo }));
+  app.get('/api/config', (c) => c.json({ uploads: uploadsHabilitados }));
   app.get('/api/casos', async (c) => c.json({ casos: await listarCasos(directorio) }));
+  app.post(
+    '/api/uploads',
+    bodyLimit({
+      maxSize: LIMITES_UPLOAD.bytesTotales + MARGEN_MULTIPART_BYTES,
+      onError: (c) => c.json({ ok: false, error: `La carga supera el máximo total de ${LIMITES_UPLOAD.bytesTotales / 1024} KB` }, 413),
+    }),
+    limitarPorIp(config),
+    recibirUpload({ habilitado: uploadsHabilitados, salida: salida ?? path.join(directorio, 'out') }),
+  );
   app.get('/api/control', async (c) => c.json(resumirControl(await leerControl(salida ?? path.join(directorio, 'out')))));
   app.get('/api/sessions/:id', (c) => {
     const sesion = sesiones.consultar(c.req.param('id'));
@@ -78,6 +91,24 @@ export function crearApp({ adaptador, directorio, salida, limites }: Dependencia
   );
 
   return app;
+}
+
+const MARGEN_MULTIPART_BYTES = 16 * 1024;
+
+function recibirUpload({ habilitado, salida }: { habilitado: boolean; salida: string }): Handler {
+  return async (c) => {
+    if (!habilitado) return c.json({ ok: false, error: 'La carga de documentos está deshabilitada' }, 404);
+    const cuerpo = await c.req.parseBody({ all: true }).catch(() => null);
+    if (!cuerpo) return c.json({ ok: false, error: 'Se esperaba un formulario multipart con archivos' }, 400);
+    const sesion = typeof cuerpo.sessionId === 'string' ? cuerpo.sessionId : '';
+    if (!/^[\w-]{1,64}$/.test(sesion)) return c.json({ ok: false, error: 'sessionId inválido' }, 400);
+    const crudos = [cuerpo.archivos].flat().filter((a): a is File => a instanceof File);
+    const archivos = await Promise.all(crudos.map(async (a) => ({ nombre: a.name, bytes: new Uint8Array(await a.arrayBuffer()) })));
+    const validados = validarArchivosSubidos(archivos);
+    if (!validados.ok) return c.json({ ok: false, error: validados.error }, 400);
+    const uploadId = await guardarUpload(salida, sesion, validados.data.documentos);
+    return c.json({ ok: true, uploadId, archivos: validados.data.documentos.map((d) => d.nombre), faltantes: validados.data.faltantes });
+  };
 }
 
 const responderError: ErrorHandler = (error, c) => {

@@ -51,3 +51,9 @@ input { flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--bord
 .indicadores .retro { border-color: var(--warn); background: var(--warn-bg); }
 .ultimas { margin: 0; padding-left: 18px; font-size: .85rem; }
 .marca-retro { margin-left: 6px; padding: 0 6px; border-radius: 4px; background: var(--warn-bg); color: var(--warn); font-size: .75rem; }
+.adjuntar { display: flex; align-items: center; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); cursor: pointer; font-size: 1.1rem; }
+.adjuntar:hover { border-color: var(--accent); }
+.adjuntos { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-bottom: 12px; }
+.adjunto { padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--card); font-family: ui-monospace, monospace; font-size: .8rem; }
+.adjuntos .quitar { background: transparent; color: var(--muted); padding: 2px 6px; }
+.adjuntos .error { width: 100%; margin: 0; }

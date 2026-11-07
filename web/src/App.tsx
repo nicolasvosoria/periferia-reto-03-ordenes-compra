@@ -21,10 +21,48 @@ function mensajeDeError(error: Error): string {
 export function App() {
   const [input, setInput] = useState('');
   const [versionControl, setVersionControl] = useState(0);
-  const { messages, sendMessage, status, error } = useChat({ onFinish: () => setVersionControl((v) => v + 1) });
+  const { id, messages, sendMessage, status, error } = useChat({ onFinish: () => setVersionControl((v) => v + 1) });
+  const [uploadsHabilitados, setUploadsHabilitados] = useState(false);
+  const [adjuntos, setAdjuntos] = useState<File[]>([]);
+  const [errorAdjuntos, setErrorAdjuntos] = useState<string | null>(null);
+  const [subiendo, setSubiendo] = useState(false);
   const ocupado = status === 'submitted' || status === 'streaming';
   const pidiendoConfirmacion = !ocupado && esperaConfirmacion(messages.at(-1));
   const [casos, setCasos] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch('/api/config')
+      .then((r) => (r.ok ? (r.json() as Promise<{ uploads: boolean }>) : { uploads: false }))
+      .then((config) => setUploadsHabilitados(config.uploads))
+      .catch(() => setUploadsHabilitados(false));
+  }, []);
+
+  async function enviar(texto: string) {
+    if (adjuntos.length === 0) {
+      void sendMessage({ text: texto });
+      return;
+    }
+    setSubiendo(true);
+    setErrorAdjuntos(null);
+    const formulario = new FormData();
+    formulario.append('sessionId', id);
+    adjuntos.forEach((archivo) => formulario.append('archivos', archivo));
+    try {
+      const respuesta = await fetch('/api/uploads', { method: 'POST', body: formulario });
+      const r = (await respuesta.json()) as { ok: boolean; error?: string; uploadId?: string; faltantes?: string[] };
+      if (!r.ok || !r.uploadId) {
+        setErrorAdjuntos(r.error ?? 'No se pudieron cargar los documentos');
+        return;
+      }
+      setAdjuntos([]);
+      const pedido = texto || 'Procesa los documentos adjuntos';
+      void sendMessage({ text: `${pedido} (uploadId: ${r.uploadId})` });
+    } catch {
+      setErrorAdjuntos('No se pudieron cargar los documentos. Intenta de nuevo.');
+    } finally {
+      setSubiendo(false);
+    }
+  }
 
   useEffect(() => {
     fetch('/api/casos')
@@ -89,19 +127,47 @@ export function App() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (!input.trim()) return;
-          void sendMessage({ text: input });
+          if (!input.trim() && adjuntos.length === 0) return;
+          void enviar(input.trim());
           setInput('');
         }}
       >
+        {uploadsHabilitados && (
+          <label className="adjuntar" title="Adjuntar correo.json, solicitud.json, cotizacion.txt, aprobacion.json y factura.txt">
+            📎
+            <input
+              type="file"
+              multiple
+              accept=".json,.txt"
+              hidden
+              disabled={ocupado || subiendo}
+              onChange={(e) => {
+                setErrorAdjuntos(null);
+                setAdjuntos([...(e.target.files ?? [])]);
+                e.target.value = '';
+              }}
+            />
+          </label>
+        )}
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder={pidiendoConfirmacion ? 'Escribe «confirmo» o indica qué corregir' : 'Ej.: Procesa la solicitud sol-004'}
-          disabled={ocupado}
+          disabled={ocupado || subiendo}
         />
-        <button type="submit" disabled={ocupado}>Enviar</button>
+        <button type="submit" disabled={ocupado || subiendo}>{subiendo ? 'Subiendo…' : 'Enviar'}</button>
       </form>
+      {uploadsHabilitados && (adjuntos.length > 0 || errorAdjuntos) && (
+        <div className="adjuntos">
+          {adjuntos.map((a) => (
+            <span key={a.name} className="adjunto">{a.name}</span>
+          ))}
+          {adjuntos.length > 0 && (
+            <button type="button" className="quitar" onClick={() => setAdjuntos([])}>Quitar</button>
+          )}
+          {errorAdjuntos && <p className="error" role="alert">{errorAdjuntos}</p>}
+        </div>
+      )}
     </main>
   );
 }

@@ -2,10 +2,11 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { z } from 'zod';
 import { normalizarMaestros, type Maestros } from '../domain/maestros.ts';
-import { casoSchema, normalizarPaquete, type Paquete, type Resultado } from '../domain/paquete.ts';
+import { normalizarPaquete, type Paquete, type Resultado } from '../domain/paquete.ts';
 import { construirOrden, ordenCompraSchema, textoEvidencia, type OrdenCompra, type Trazabilidad } from '../domain/payload.ts';
 import { validarPaquete, type Validacion } from '../domain/reglas.ts';
-import { leerCaso, leerMaestros } from '../infra/fixtures.ts';
+import { leerMaestros } from '../infra/fixtures.ts';
+import { referenciaArgs, resolverOrigen, type OrigenPaquete } from '../infra/origen.ts';
 import { pdfDeTexto } from '../infra/pdf.ts';
 import { registrarError } from '../infra/registro.ts';
 import { escribirArchivo, registrarControl, registrarLlamada, type FilaControl } from '../infra/salida.ts';
@@ -54,35 +55,47 @@ function herramienta<A extends z.ZodRawShape>(
   };
 }
 
+type Referencia = { caso?: string; uploadId?: string };
+
 interface CasoEvaluado {
+  origen: OrigenPaquete;
   paquete: Paquete;
   maestros: Maestros;
   validacion: Validacion;
 }
 
-async function evaluarCaso(ctx: ContextoHerramienta, caso: string): Promise<Resultado<CasoEvaluado>> {
-  const paquete = normalizarPaquete(await leerCaso(ctx.directory, caso));
+async function cargarPaquete(ctx: ContextoHerramienta, referencia: Referencia): Promise<Resultado<{ origen: OrigenPaquete; paquete: Paquete }>> {
+  const origen = resolverOrigen(referencia, { directory: ctx.directory, sessionId: ctx.sessionId, salida: salidaDe(ctx) });
+  if (!origen.ok) return origen;
+  const paquete = normalizarPaquete(await origen.data.leerArchivos());
   if (!paquete.ok) return paquete;
-  const maestros = normalizarMaestros(await leerMaestros(ctx.directory));
-  if (!maestros.ok) return maestros;
-  return { ok: true, data: { paquete: paquete.data, maestros: maestros.data, validacion: validarPaquete(paquete.data, maestros.data) } };
+  return { ok: true, data: { origen: origen.data, paquete: paquete.data } };
 }
 
-async function escribirEvidencia(ctx: ContextoHerramienta, caso: string, paquete: Paquete) {
+async function evaluarCaso(ctx: ContextoHerramienta, referencia: Referencia): Promise<Resultado<CasoEvaluado>> {
+  const cargado = await cargarPaquete(ctx, referencia);
+  if (!cargado.ok) return cargado;
+  const maestros = normalizarMaestros(await leerMaestros(ctx.directory));
+  if (!maestros.ok) return maestros;
+  const { origen, paquete } = cargado.data;
+  return { ok: true, data: { origen, paquete, maestros: maestros.data, validacion: validarPaquete(paquete, maestros.data) } };
+}
+
+async function escribirEvidencia(ctx: ContextoHerramienta, origen: OrigenPaquete, paquete: Paquete) {
   if (!paquete.aprobacion) return null;
   const contenido = textoEvidencia(paquete.aprobacion);
   const sha256 = createHash('sha256').update(contenido).digest('hex');
   const conHash = `${contenido}\nsha256: ${sha256}\n`;
-  const ruta = path.join(salidaDe(ctx), caso, 'aprobacion.txt');
-  const rutaPdf = path.join(salidaDe(ctx), caso, 'aprobacion.pdf');
+  const ruta = path.join(salidaDe(ctx), origen.carpetaSalida, 'aprobacion.txt');
+  const rutaPdf = path.join(salidaDe(ctx), origen.carpetaSalida, 'aprobacion.pdf');
   await escribirArchivo(ruta, conHash);
-  await escribirArchivo(rutaPdf, await pdfDeTexto(`Evidencia de aprobación — ${caso}`, conHash));
+  await escribirArchivo(rutaPdf, await pdfDeTexto(`Evidencia de aprobación — ${origen.etiqueta}`, conHash));
   return { ruta: path.relative(ctx.directory, ruta), pdf: path.relative(ctx.directory, rutaPdf), sha256 };
 }
 
-async function guardarTrazabilidad(ctx: ContextoHerramienta, caso: string, trazabilidad: Trazabilidad) {
-  const ruta = path.join(salidaDe(ctx), caso, 'trazabilidad.json');
-  await escribirArchivo(ruta, JSON.stringify(trazabilidad, null, 2));
+async function guardarTrazabilidad(ctx: ContextoHerramienta, origen: OrigenPaquete, trazabilidad: Trazabilidad) {
+  const ruta = path.join(salidaDe(ctx), origen.carpetaSalida, 'trazabilidad.json');
+  await escribirArchivo(ruta, JSON.stringify({ origen: origen.etiqueta, ...trazabilidad }, null, 2));
   return path.relative(ctx.directory, ruta);
 }
 
@@ -95,32 +108,38 @@ export const confirmaEnSuMensaje = (mensaje: string | undefined) =>
 const sinConfirmador = (orden: OrdenCompra) =>
   JSON.stringify({ ...orden, excepciones: orden.excepciones.map((e) => ({ ...e, confirmado_por: null })) });
 
-function filaControl(validacion: Validacion, solicitudId: string, resultado: FilaControl['resultado'], numeroOc: string | null): FilaControl {
+function filaControl(evaluado: CasoEvaluado, resultado: FilaControl['resultado'], numeroOc: string | null): FilaControl {
+  const { validacion } = evaluado;
   return {
-    solicitud_id: solicitudId,
+    solicitud_id: evaluado.paquete.solicitud.solicitud_id,
     resultado,
     numero_oc: numeroOc,
     retroactiva: validacion.retroactiva,
     bloqueos: validacion.bloqueos.map((b) => b.regla),
     confirmaciones: validacion.confirmaciones.map((c) => c.regla),
     ts: new Date().toISOString(),
+    origen: evaluado.origen.etiqueta,
   };
 }
 
 export const leer_paquete = herramienta('leer_paquete', {
-  description: 'Lee y normaliza el paquete de un caso: correo, solicitud, cotización, aprobación y factura (null si falta).',
-  args: { caso: casoSchema },
-  ejecutar: async ({ caso }, ctx) => normalizarPaquete(await leerCaso(ctx.directory, caso)),
+  description:
+    'Lee y normaliza el paquete (correo, solicitud, cotización, aprobación y factura; null si falta) de un caso de fixtures o de documentos adjuntos (uploadId).',
+  args: referenciaArgs,
+  ejecutar: async (referencia, ctx) => {
+    const cargado = await cargarPaquete(ctx, referencia);
+    return cargado.ok ? { ok: true, data: { origen: cargado.data.origen.etiqueta, ...cargado.data.paquete } } : cargado;
+  },
 });
 
 export const validar = herramienta('validar', {
   description: 'Aplica las reglas RC1–RC10 contra los maestros y devuelve apta, bloqueos, confirmaciones, derivados y retroactiva.',
   args: {
-    caso: casoSchema,
-    paquete: z.unknown().optional().describe('Paquete de oc_leer_paquete; se ignora y se relee desde los fixtures para que no pueda alterarse'),
+    ...referenciaArgs,
+    paquete: z.unknown().optional().describe('Paquete de oc_leer_paquete; se ignora y se relee desde el origen para que no pueda alterarse'),
   },
-  ejecutar: async ({ caso }, ctx) => {
-    const evaluado = await evaluarCaso(ctx, caso);
+  ejecutar: async ({ caso, uploadId }, ctx) => {
+    const evaluado = await evaluarCaso(ctx, { caso, uploadId });
     if (!evaluado.ok) return evaluado;
     const { proveedor, aprobador, ...validacion } = evaluado.data.validacion;
     return { ok: true, data: { ...validacion, proveedor: proveedor?.codigo_sap ?? null, aprobador: aprobador?.email ?? null } };
@@ -129,30 +148,30 @@ export const validar = herramienta('validar', {
 
 export const generar_evidencia = herramienta('generar_evidencia', {
   description: 'Genera out/<caso>/aprobacion.txt y aprobacion.pdf con el correo de aprobación (encabezados y cuerpo) y su sha256.',
-  args: { caso: casoSchema },
-  ejecutar: async ({ caso }, ctx) => {
-    const paquete = normalizarPaquete(await leerCaso(ctx.directory, caso));
-    if (!paquete.ok) return paquete;
-    const evidencia = await escribirEvidencia(ctx, caso, paquete.data);
-    return evidencia ? { ok: true, data: evidencia } : { ok: false, error: 'El caso no tiene correo de aprobación' };
+  args: referenciaArgs,
+  ejecutar: async (referencia, ctx) => {
+    const cargado = await cargarPaquete(ctx, referencia);
+    if (!cargado.ok) return cargado;
+    const evidencia = await escribirEvidencia(ctx, cargado.data.origen, cargado.data.paquete);
+    return evidencia ? { ok: true, data: evidencia } : { ok: false, error: 'El paquete no tiene correo de aprobación' };
   },
 });
 
 export const construir_payload = herramienta('construir_payload', {
   description: 'Construye la OC exactamente como quedaría en SAP (esquema zod) y guarda su trazabilidad por campo.',
   args: {
-    caso: casoSchema,
-    paquete: z.unknown().optional().describe('Se ignora: el payload se calcula desde los fixtures'),
+    ...referenciaArgs,
+    paquete: z.unknown().optional().describe('Se ignora: el payload se calcula desde el origen'),
     derivados: z.unknown().optional().describe('Se ignora: los derivados se recalculan desde los maestros'),
   },
-  ejecutar: async ({ caso }, ctx) => {
-    const evaluado = await evaluarCaso(ctx, caso);
+  ejecutar: async ({ caso, uploadId }, ctx) => {
+    const evaluado = await evaluarCaso(ctx, { caso, uploadId });
     if (!evaluado.ok) return evaluado;
-    const { paquete, validacion } = evaluado.data;
-    const evidencia = await escribirEvidencia(ctx, caso, paquete);
+    const { origen, paquete, validacion } = evaluado.data;
+    const evidencia = await escribirEvidencia(ctx, origen, paquete);
     const construida = construirOrden({ paquete, validacion, evidenciaSha256: evidencia?.sha256 ?? '', confirmadoPor: null });
     if (!construida.ok) return { ok: false, error: `${construida.error}: ${validacion.bloqueos.map((b) => b.detalle).join('; ')}` };
-    const trazabilidad = await guardarTrazabilidad(ctx, caso, construida.data.trazabilidad);
+    const trazabilidad = await guardarTrazabilidad(ctx, origen, construida.data.trazabilidad);
     return { ok: true, data: { orden: construida.data.orden, trazabilidad, confirmaciones: validacion.confirmaciones } };
   },
 });
@@ -161,18 +180,18 @@ export const crear = herramienta('crear', {
   description:
     'Crea la OC en SAP. Si hay confirmaciones pendientes exige confirmado=true y que el último mensaje del usuario confirme. Idempotente por solicitud_id.',
   args: {
-    caso: casoSchema,
+    ...referenciaArgs,
     payload: ordenCompraSchema.optional().describe('Payload de oc_construir_payload; si difiere del calculado, se rechaza'),
     confirmado: z.boolean().optional().describe('true solo si el usuario confirmó explícitamente en su último mensaje'),
   },
-  ejecutar: async ({ caso, payload, confirmado }, ctx) => {
-    const evaluado = await evaluarCaso(ctx, caso);
+  ejecutar: async ({ caso, uploadId, payload, confirmado }, ctx) => {
+    const evaluado = await evaluarCaso(ctx, { caso, uploadId });
     if (!evaluado.ok) return evaluado;
-    const { paquete, maestros, validacion } = evaluado.data;
+    const { origen, paquete, maestros, validacion } = evaluado.data;
     const salida = salidaDe(ctx);
     const solicitudId = paquete.solicitud.solicitud_id;
     if (!validacion.apta) {
-      await registrarControl(salida, filaControl(validacion, solicitudId, 'bloqueada', null));
+      await registrarControl(salida, filaControl(evaluado.data, 'bloqueada', null));
       return { ok: false, error: `OC bloqueada: ${validacion.bloqueos.map((b) => `${b.regla} ${b.detalle}`).join('; ')}` };
     }
 
@@ -180,14 +199,14 @@ export const crear = herramienta('crear', {
     const existente = await sap.buscarOrdenPorReferencia(solicitudId);
     const requiereConfirmacion = validacion.confirmaciones.length > 0 && !existente;
     if (requiereConfirmacion && !(confirmado === true && confirmaEnSuMensaje(ctx.ultimoMensajeUsuario))) {
-      await registrarControl(salida, filaControl(validacion, solicitudId, 'pendiente_confirmacion', null));
+      await registrarControl(salida, filaControl(evaluado.data, 'pendiente_confirmacion', null));
       return {
         ok: false,
         error: `Requiere confirmación humana explícita antes de crear: ${validacion.confirmaciones.map((c) => `${c.regla} ${c.detalle}`).join('; ')}`,
       };
     }
 
-    const evidencia = await escribirEvidencia(ctx, caso, paquete);
+    const evidencia = await escribirEvidencia(ctx, origen, paquete);
     const confirmadoPor = validacion.confirmaciones.length > 0 ? `analista (sesión ${ctx.sessionId})` : null;
     const construida = construirOrden({ paquete, validacion, evidenciaSha256: evidencia?.sha256 ?? '', confirmadoPor });
     if (!construida.ok) return construida;
@@ -195,9 +214,9 @@ export const crear = herramienta('crear', {
       return { ok: false, error: 'El payload recibido no coincide con el calculado desde las fuentes; no se crea la OC' };
     }
 
-    await guardarTrazabilidad(ctx, caso, construida.data.trazabilidad);
+    await guardarTrazabilidad(ctx, origen, construida.data.trazabilidad);
     const { numero_oc, fecha } = await sap.crearOrden(construida.data.orden);
-    await registrarControl(salida, filaControl(validacion, solicitudId, existente ? 'idempotente' : 'creada', numero_oc));
+    await registrarControl(salida, filaControl(evaluado.data, existente ? 'idempotente' : 'creada', numero_oc));
     return { ok: true, data: { numero_oc, fecha, idempotente: !!existente, evidencia: evidencia?.ruta ?? null } };
   },
 });
